@@ -1,0 +1,392 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── AUTH (Auth.js v5) ─────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts  Account[]
+  sessions  Session[]
+  farmUsers FarmUser[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ─── FARM ──────────────────────────────────────────────────
+
+model Farm {
+  id        String   @id @default(cuid())
+  name      String
+  city      String?
+  state     String   @default("MG")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users    FarmUser[]
+  animals  Animal[]
+  lots     Lot[]
+  pastures Pasture[]
+  alerts   Alert[]
+
+  @@map("farms")
+}
+
+model FarmUser {
+  id       String   @id @default(cuid())
+  farmId   String
+  userId   String
+  role     UserRole @default(WORKER)
+  joinedAt DateTime @default(now())
+
+  farm Farm @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([farmId, userId])
+  @@map("farm_users")
+}
+
+// ─── ANIMAL ────────────────────────────────────────────────
+
+model Animal {
+  id           String       @id @default(cuid())
+  farmId       String
+  tag          String       // Brinco gerado automaticamente: BOV-0001
+  name         String?
+  sex          Sex
+  category     Category
+  breed        String       @default("Mestiço")
+  status       AnimalStatus @default(ACTIVE)
+  purpose      Purpose      @default(DAIRY)
+  birthDate    DateTime?
+  // birthType rastreia origem do animal — usado para regra:
+  // fêmea de INSEMINATION não pode ir para abate antes de virar vaca
+  birthType    BirthType?
+  entryDate    DateTime     @default(now())
+  exitDate     DateTime?
+  exitReason   String?
+  motherId     String?
+  fatherId     String?
+  lotId        String?
+  observations String?      @db.Text
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  farm             Farm         @relation(fields: [farmId], references: [id])
+  lot              Lot?         @relation(fields: [lotId], references: [id])
+  mother           Animal?      @relation("Mother", fields: [motherId], references: [id])
+  maternalChildren Animal[]     @relation("Mother")
+  father           Animal?      @relation("Father", fields: [fatherId], references: [id])
+  paternalChildren Animal[]     @relation("Father")
+
+  photos         AnimalPhoto[]
+  weightRecords  WeightRecord[]
+  healthEvents   HealthEvent[]
+  milkRecords    MilkRecord[]
+  reproductions  Reproduction[]
+  alerts         Alert[]
+
+  @@unique([farmId, tag])
+  @@index([farmId, status])
+  @@index([farmId, lotId])
+  @@index([motherId])
+  @@index([fatherId])
+  @@map("animals")
+}
+
+model AnimalPhoto {
+  id        String   @id @default(cuid())
+  animalId  String
+  url       String
+  caption   String?
+  takenAt   DateTime @default(now())
+  isPrimary Boolean  @default(false)
+
+  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  @@index([animalId, takenAt])
+  @@map("animal_photos")
+}
+
+model WeightRecord {
+  id         String   @id @default(cuid())
+  animalId   String
+  weightKg   Float
+  measuredAt DateTime @default(now())
+  notes      String?
+
+  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  @@index([animalId, measuredAt])
+  @@map("weight_records")
+}
+
+model HealthEvent {
+  id          String          @id @default(cuid())
+  animalId    String
+  type        HealthEventType
+  description String
+  medication  String?
+  cost        Float?
+  occurredAt  DateTime        @default(now())
+  resolved    Boolean         @default(false)
+  notes       String?         @db.Text
+
+  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  @@index([animalId])
+  @@map("health_events")
+}
+
+// ─── LOTES E PASTOS ────────────────────────────────────────
+
+model Lot {
+  id          String   @id @default(cuid())
+  farmId      String
+  name        String
+  type        LotType  @default(MIXED)
+  maxCapacity Int?
+  pastureId   String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  observations String?  @db.Text
+
+  farm    Farm     @relation(fields: [farmId], references: [id])
+  pasture Pasture? @relation(fields: [pastureId], references: [id])
+  animals Animal[]
+
+  @@unique([farmId, name])
+  @@map("lots")
+}
+
+model Pasture {
+  id           String   @id @default(cuid())
+  farmId       String
+  name         String
+  areaHectares Float?
+  grassType    String?
+  maxCapacity  Int?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  farm Farm  @relation(fields: [farmId], references: [id])
+  lots Lot[]
+
+  @@unique([farmId, name])
+  @@map("pastures")
+}
+
+// ─── REPRODUÇÃO ────────────────────────────────────────────
+
+model Reproduction {
+  id            String             @id @default(cuid())
+  animalId      String
+  type          ReproductionType
+  status        ReproductionStatus @default(PENDING)
+  date          DateTime
+  // bullName = nome do touro (monta natural) ou identificação do sêmen (IA)
+  bullName      String?
+  result        String?
+  nextCheckDate DateTime?
+  notes         String?
+  createdAt     DateTime           @default(now())
+
+  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  @@index([animalId])
+  @@map("reproductions")
+}
+
+// ─── PRODUÇÃO DE LEITE ─────────────────────────────────────
+
+model MilkRecord {
+  id         String     @id @default(cuid())
+  animalId   String
+  farmId     String
+  liters     Float
+  shift      MilkShift
+  recordedAt DateTime   @default(now())
+
+  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  @@index([farmId, recordedAt])
+  @@index([animalId, recordedAt])
+  @@map("milk_records")
+}
+
+// ─── ALERTAS ───────────────────────────────────────────────
+
+model Alert {
+  id          String      @id @default(cuid())
+  farmId      String
+  animalId    String?
+  type        AlertType
+  title       String
+  description String?
+  priority    Priority    @default(MEDIUM)
+  status      AlertStatus @default(PENDING)
+  dueDate     DateTime?
+  resolvedAt  DateTime?
+  createdAt   DateTime    @default(now())
+
+  farm   Farm    @relation(fields: [farmId], references: [id])
+  animal Animal? @relation(fields: [animalId], references: [id])
+
+  @@index([farmId, status])
+  @@map("alerts")
+}
+
+// ─── ENUMS ─────────────────────────────────────────────────
+
+enum UserRole {
+  OWNER
+  MANAGER
+  WORKER
+  VIEWER
+}
+
+enum Sex {
+  MALE
+  FEMALE
+}
+
+enum Purpose {
+  DAIRY
+  BEEF
+  BOTH
+}
+
+enum AnimalStatus {
+  ACTIVE
+  SOLD
+  DEAD
+  TRANSFERRED
+}
+
+enum Category {
+  CALF
+  HEIFER
+  COW
+  BULL
+  STEER
+}
+
+// BirthType: rastreia origem do animal para regras reprodutivas futuras
+enum BirthType {
+  NATURAL
+  INSEMINATION
+  EMBRYO_TRANSFER
+}
+
+enum LotType {
+  LACTATING
+  DRY
+  HEIFER
+  CALF
+  FATTENING
+  MIXED
+}
+
+enum HealthEventType {
+  VACCINATION
+  DISEASE
+  DEWORMING
+  EXAM
+  OTHER
+}
+
+enum ReproductionType {
+  INSEMINATION
+  NATURAL_MATING
+  PREGNANCY_CHECK
+}
+
+enum ReproductionStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+}
+
+enum MilkShift {
+  MORNING
+  AFTERNOON
+  EVENING
+}
+
+enum AlertType {
+  HEAT
+  PREGNANCY_CHECK
+  DRY_OFF
+  CALVING
+  VACCINATION
+  WEIGHT_CHECK
+}
+
+enum AlertStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+enum Priority {
+  HIGH
+  MEDIUM
+  LOW
+}

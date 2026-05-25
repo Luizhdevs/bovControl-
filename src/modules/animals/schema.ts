@@ -1,0 +1,118 @@
+import { z } from 'zod'
+
+// ─── Create ────────────────────────────────────────────────
+
+/**
+ * Campos obrigatórios no cadastro: sex, category, purpose.
+ * Todo o resto é opcional para agilizar o input no curral.
+ */
+export const createAnimalSchema = z
+  .object({
+    sex:      z.enum(['MALE', 'FEMALE'], { required_error: 'Selecione o sexo' }),
+    category: z.enum(['CALF', 'HEIFER', 'COW', 'BULL', 'STEER'], {
+      required_error: 'Selecione a categoria',
+    }),
+    purpose:   z.enum(['DAIRY', 'BEEF', 'BOTH']).default('DAIRY'),
+    name:      z.string().trim().max(60).optional().or(z.literal('')).transform(v => v || undefined),
+    breed:     z.string().trim().max(60).default('Mestiço'),
+    birthDate: z.coerce.date().optional().nullable(),
+    birthType: z.enum(['NATURAL', 'INSEMINATION', 'EMBRYO_TRANSFER']).optional().nullable(),
+    motherId:  z.string().cuid().optional().nullable(),
+    fatherId:  z.string().cuid().optional().nullable(),
+    lotId:     z.string().cuid().optional().nullable(),
+    observations: z
+      .string()
+      .max(500, 'Máximo de 500 caracteres')
+      .optional()
+      .nullable(),
+  })
+  .superRefine((data, ctx) => {
+    // Fêmeas não podem ser Touro ou Boi
+    if (data.sex === 'FEMALE' && ['BULL', 'STEER'].includes(data.category)) {
+      ctx.addIssue({
+        code:    z.ZodIssueCode.custom,
+        message: 'Fêmeas não podem ter categoria Touro ou Boi',
+        path:    ['category'],
+      })
+    }
+    // Machos não podem ser Novilha ou Vaca
+    if (data.sex === 'MALE' && ['HEIFER', 'COW'].includes(data.category)) {
+      ctx.addIssue({
+        code:    z.ZodIssueCode.custom,
+        message: 'Machos não podem ter categoria Novilha ou Vaca',
+        path:    ['category'],
+      })
+    }
+  })
+
+export type CreateAnimalInput = z.infer<typeof createAnimalSchema>
+
+// ─── Update ────────────────────────────────────────────────
+
+export const updateAnimalSchema = z
+  .object({
+    sex:      z.enum(['MALE', 'FEMALE']).optional(),
+    category: z.enum(['CALF', 'HEIFER', 'COW', 'BULL', 'STEER']).optional(),
+    purpose:  z.enum(['DAIRY', 'BEEF', 'BOTH']).optional(),
+    status:   z.enum(['ACTIVE', 'SOLD', 'DEAD', 'TRANSFERRED']).optional(),
+    name:     z.string().trim().max(60).optional().or(z.literal('')).transform(v => v || undefined),
+    breed:    z.string().trim().max(60).optional(),
+    birthDate: z.coerce.date().optional().nullable(),
+    birthType: z.enum(['NATURAL', 'INSEMINATION', 'EMBRYO_TRANSFER']).optional().nullable(),
+    motherId:  z.string().cuid().optional().nullable(),
+    fatherId:  z.string().cuid().optional().nullable(),
+    lotId:     z.string().cuid().optional().nullable(),
+    exitDate:  z.coerce.date().optional().nullable(),
+    exitReason: z.string().max(200).optional().nullable(),
+    observations: z.string().max(500).optional().nullable(),
+  })
+
+export type UpdateAnimalInput = z.infer<typeof updateAnimalSchema>
+
+// ─── Transfer Lot ──────────────────────────────────────────
+
+export const transferLotSchema = z.object({
+  animalId: z.string().cuid('ID inválido'),
+  lotId:    z.string().cuid('ID do lote inválido').nullable(),
+})
+
+export type TransferLotInput = z.infer<typeof transferLotSchema>
+
+// ─── Upload de foto ────────────────────────────────────────
+
+export const addPhotoSchema = z.object({
+  animalId:  z.string().cuid('ID inválido'),
+  url:       z.string().url('URL inválida'),
+  caption:   z.string().max(200).optional().nullable(),
+  takenAt:   z.coerce.date().default(() => new Date()),
+  isPrimary: z.boolean().default(false),
+})
+
+export type AddPhotoInput = z.infer<typeof addPhotoSchema>
+
+// ─── Pesagem rápida ────────────────────────────────────────
+
+export const addWeightSchema = z.object({
+  animalId:  z.string().cuid('ID inválido'),
+  weightKg:  z
+    .number({ required_error: 'Informe o peso' })
+    .positive('Peso deve ser positivo')
+    .max(2000, 'Peso inválido'),
+  measuredAt: z.coerce.date().default(() => new Date()),
+  notes:      z.string().max(200).optional().nullable(),
+})
+
+export type AddWeightInput = z.infer<typeof addWeightSchema>
+
+// ─── Filtros da listagem ───────────────────────────────────
+
+export const animalFiltersSchema = z.object({
+  search:   z.string().optional(),
+  sex:      z.enum(['MALE', 'FEMALE']).optional(),
+  category: z.enum(['CALF', 'HEIFER', 'COW', 'BULL', 'STEER']).optional(),
+  status:   z.enum(['ACTIVE', 'SOLD', 'DEAD', 'TRANSFERRED']).default('ACTIVE'),
+  purpose:  z.enum(['DAIRY', 'BEEF', 'BOTH']).optional(),
+  lotId:    z.string().optional(),
+})
+
+export type AnimalFiltersInput = z.infer<typeof animalFiltersSchema>
