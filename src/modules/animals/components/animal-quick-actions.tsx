@@ -270,7 +270,7 @@ function MilkSheet({
       const result = await registerMilkRecord(farmId, {
         animalId,
         liters: value,
-        shift:  shift as 'MORNING' | 'AFTERNOON' | 'EVENING',
+        shift:  shift as 'MORNING' | 'AFTERNOON',
       })
 
       if (!result.success) {
@@ -293,8 +293,8 @@ function MilkSheet({
 
         <div className="space-y-4">
           {/* Turno */}
-          <div className="grid grid-cols-3 gap-2">
-            {(['MORNING', 'AFTERNOON', 'EVENING'] as const).map((s) => (
+          <div className="grid grid-cols-2 gap-2">
+            {(['MORNING', 'AFTERNOON'] as const).map((s) => (
               <button
                 key={s}
                 type="button"

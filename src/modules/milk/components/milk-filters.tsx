@@ -15,9 +15,8 @@ const PERIOD_OPTIONS = [
 
 const SHIFT_OPTIONS = [
   { label: 'Todos',                          value: ''          },
-  { label: MILK_SHIFT_LABELS['MORNING'],     value: 'MORNING'   },
-  { label: MILK_SHIFT_LABELS['AFTERNOON'],   value: 'AFTERNOON' },
-  { label: MILK_SHIFT_LABELS['EVENING'],     value: 'EVENING'   },
+  { label: MILK_SHIFT_LABELS['MORNING']!,    value: 'MORNING'   },
+  { label: MILK_SHIFT_LABELS['AFTERNOON']!,  value: 'AFTERNOON' },
 ]
 
 // ─── Componente ────────────────────────────────────────────

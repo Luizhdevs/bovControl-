@@ -25,7 +25,6 @@ export type DailyMilkSummary = {
   byShift: {
     MORNING:   number
     AFTERNOON: number
-    EVENING:   number
   }
   topAnimals:   AnimalMilkSummary[]
 }
@@ -49,7 +48,10 @@ export type DailyProduction = {
 }
 
 // ─── ActionResult (mesmo padrão dos outros módulos) ────────
+// kind discrimina a origem do erro:
+//   'domain'  → regra de negócio / validação → NÃO enfileirar offline
+//   'network' → falha de rede / banco / inesperado → enfileirar offline
 
 export type ActionResult<T = void> =
-  | { success: true;  data: T;       error?: never }
-  | { success: false; error: string; data?:  never }
+  | { success: true;  data: T;       error?: never; kind?: never }
+  | { success: false; error: string; data?:  never; kind: 'domain' | 'network' }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, useMemo } from 'react'
+import { useState, useEffect, useTransition, useMemo } from 'react'
 import { useRouter }    from 'next/navigation'
 import { useForm }      from 'react-hook-form'
 import { zodResolver }  from '@hookform/resolvers/zod'
@@ -9,7 +9,7 @@ import { useMilkQueue } from '@/stores/milk-queue'
 import { registerMilkRecord } from '../actions'
 import { milkRecordSchema, type MilkRecordInput } from '../schema'
 import { getDefaultShift, MilkShiftTabs } from './milk-shift-tabs'
-import { MILK_CATEGORY_COLORS, isOfflineCandidate } from '../constants'
+import { MILK_CATEGORY_COLORS } from '../constants'
 import { cn } from '@/lib/utils'
 import { CATEGORY_LABELS } from '@/modules/shared/domain/animal-labels'
 import { Input }    from '@/components/ui/input'
@@ -55,10 +55,17 @@ export function MilkRegisterForm({
     resolver: zodResolver(milkRecordSchema),
     defaultValues: {
       animalId:   preSelectedAnimal?.id ?? '',
-      shift:      getDefaultShift(),
+      // Inicia com MORNING para SSR; useEffect corrige para o turno local
+      // sem causar hydration mismatch (servidor não conhece o fuso do cliente).
+      shift:      'MORNING',
       recordedAt: new Date(),
     },
   })
+
+  // Aplica o turno local após a montagem do componente
+  useEffect(() => {
+    setValue('shift', getDefaultShift())
+  }, [setValue])
 
   const shift = watch('shift')
 
@@ -90,7 +97,8 @@ export function MilkRegisterForm({
         return
       }
 
-      if (isOfflineCandidate(result.error) && selectedAnimal) {
+      // kind === 'network': falha de rede/servidor → enfileirar offline
+      if (result.kind === 'network' && selectedAnimal) {
         addToQueue({
           farmId,
           animalId:   data.animalId,

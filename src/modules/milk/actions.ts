@@ -20,7 +20,8 @@ import type { ActionResult } from './types'
  * 1. canRegisterMilk() — guarda: macho, inativo, bezerra bloqueados
  * 2. shouldUpgradeToCowByMilkRecord() — novilha com leite vira vaca
  *
- * Nenhuma dessas regras está duplicada aqui — vêm do domínio compartilhado.
+ * Operações de DB em $transaction para garantir atomicidade:
+ * - create MilkRecord + update Animal.category são indivisíveis.
  */
 export async function registerMilkRecord(
   farmId:  string,
@@ -28,11 +29,11 @@ export async function registerMilkRecord(
 ): Promise<ActionResult<{ id: string }>> {
   try {
     const session = await auth()
-    if (!session) return { success: false, error: 'Não autorizado' }
+    if (!session) return { success: false, error: 'Não autorizado', kind: 'domain' }
 
     const parsed = milkRecordSchema.safeParse(rawData)
     if (!parsed.success) {
-      return { success: false, error: parsed.error.errors[0]!.message }
+      return { success: false, error: parsed.error.errors[0]!.message, kind: 'domain' }
     }
 
     await requireFarmAccess(session.user.id, farmId, 'WORKER')
@@ -43,42 +44,48 @@ export async function registerMilkRecord(
       select: { id: true, sex: true, category: true, status: true, birthType: true },
     })
 
-    if (!animal) return { success: false, error: 'Animal não encontrado' }
+    if (!animal) return { success: false, error: 'Animal não encontrado', kind: 'domain' }
 
     // Guard: valida se pode registrar leite
     const guard = canRegisterMilk(animal)
     if (!guard.allowed) {
-      return { success: false, error: guard.reason }
+      return { success: false, error: guard.reason, kind: 'domain' }
     }
 
-    // Cria o registro de leite
-    const record = await prisma.milkRecord.create({
-      data: {
-        animalId:   parsed.data.animalId,
-        farmId,
-        liters:     parsed.data.liters,
-        shift:      parsed.data.shift,
-        recordedAt: parsed.data.recordedAt,
-      },
-      select: { id: true },
-    })
+    const needsUpgrade = shouldUpgradeToCowByMilkRecord(animal)
 
-    // Regra automática: HEIFER com registro de leite vira COW
-    // Usa a função do domínio compartilhado para decidir
-    if (shouldUpgradeToCowByMilkRecord(animal)) {
-      await prisma.animal.update({
-        where: { id: animal.id },
-        data:  { category: 'COW' },
+    // Cria o registro + possível upgrade de categoria em uma transação atômica
+    const record = await prisma.$transaction(async (tx) => {
+      const created = await tx.milkRecord.create({
+        data: {
+          animalId:   parsed.data.animalId,
+          farmId,
+          liters:     parsed.data.liters,
+          shift:      parsed.data.shift,
+          recordedAt: parsed.data.recordedAt,
+        },
+        select: { id: true },
       })
-    }
+
+      // Regra automática: HEIFER com registro de leite vira COW
+      if (needsUpgrade) {
+        await tx.animal.update({
+          where: { id: animal.id },
+          data:  { category: 'COW' },
+        })
+      }
+
+      return created
+    })
 
     revalidatePath(`/animals/${parsed.data.animalId}`)
     revalidatePath('/milk')
+    revalidatePath('/')
 
     return { success: true, data: { id: record.id } }
   } catch (error) {
     console.error('[registerMilkRecord]', error)
-    return { success: false, error: 'Erro ao registrar produção. Tente novamente.' }
+    return { success: false, error: 'Erro ao registrar produção. Tente novamente.', kind: 'network' }
   }
 }
 
@@ -90,7 +97,7 @@ export async function deleteMilkRecord(
 ): Promise<ActionResult<void>> {
   try {
     const session = await auth()
-    if (!session) return { success: false, error: 'Não autorizado' }
+    if (!session) return { success: false, error: 'Não autorizado', kind: 'domain' }
 
     await requireFarmAccess(session.user.id, farmId, 'MANAGER')
 
@@ -98,16 +105,17 @@ export async function deleteMilkRecord(
       where:  { id: recordId, farmId },
       select: { id: true, animalId: true },
     })
-    if (!record) return { success: false, error: 'Registro não encontrado' }
+    if (!record) return { success: false, error: 'Registro não encontrado', kind: 'domain' }
 
     await prisma.milkRecord.delete({ where: { id: recordId } })
 
     revalidatePath(`/animals/${record.animalId}`)
     revalidatePath('/milk')
+    revalidatePath('/')
 
     return { success: true, data: undefined }
   } catch (error) {
     console.error('[deleteMilkRecord]', error)
-    return { success: false, error: 'Erro ao excluir registro.' }
+    return { success: false, error: 'Erro ao excluir registro.', kind: 'network' }
   }
 }

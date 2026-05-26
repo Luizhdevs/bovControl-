@@ -106,7 +106,6 @@ export const HEALTH_EVENT_LABELS: Record<string, string> = {
 export const MILK_SHIFT_LABELS: Record<string, string> = {
   MORNING:   'Manhã',
   AFTERNOON: 'Tarde',
-  EVENING:   'Noite',
 }
 
 // ─── Reprodução ────────────────────────────────────────────

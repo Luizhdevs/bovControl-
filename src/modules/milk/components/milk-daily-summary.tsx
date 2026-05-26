@@ -11,12 +11,12 @@ interface MilkDailySummaryProps {
 }
 
 export function MilkDailySummary({ summary, className }: MilkDailySummaryProps) {
-  const shifts = ['MORNING', 'AFTERNOON', 'EVENING'] as const
+  const shifts = ['MORNING', 'AFTERNOON'] as const
 
   return (
     <div className={cn('space-y-4', className)}>
 
-      {/* Destaque: total do dia — formatLiters sem a unidade para não duplicar "litros hoje" */}
+      {/* Destaque: total do dia */}
       <div className="text-center py-2">
         <div className="text-5xl font-bold tabular-nums text-cyan-400 leading-none">
           {formatLiters(summary.totalLiters)}
@@ -28,7 +28,7 @@ export function MilkDailySummary({ summary, className }: MilkDailySummaryProps) 
       </div>
 
       {/* Por turno */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
         {shifts.map((shift) => {
           const liters = summary.byShift[shift]
           const pct    = summary.totalLiters > 0

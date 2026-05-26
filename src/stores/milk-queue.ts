@@ -21,7 +21,7 @@ export interface MilkQueueItem {
   animalTag:  string
   animalName: string | null
   liters:     number
-  shift:      'MORNING' | 'AFTERNOON' | 'EVENING'
+  shift:      'MORNING' | 'AFTERNOON'
   recordedAt: string  // ISO string
   retries:    number
   createdAt:  string  // ISO string

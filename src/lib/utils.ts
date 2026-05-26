@@ -68,19 +68,25 @@ export function formatCurrency(value: number | null | undefined): string {
 
 /**
  * Gera o próximo tag disponível para a fazenda no formato BOV-XXXX.
- * MVP: sem lock de concorrência. Produção → usar sequence no banco.
+ *
+ * Busca apenas o tag mais alto (1 linha) em vez de carregar todos.
+ * Tags seguem BOV-NNNN (padding fixo de 4 dígitos), portanto
+ * ordenação lexicográfica = ordenação numérica para até 9999 animais.
+ *
+ * Nota: ainda sujeito a race condition em cadastros simultâneos.
+ * Para produção com múltiplos usuários simultâneos, substituir por
+ * uma sequência PostgreSQL por fazenda (ALTER SEQUENCE / nextval).
  */
 export async function generateAnimalTag(farmId: string): Promise<string> {
-  const animals = await prisma.animal.findMany({
-    where:  { farmId },
-    select: { tag: true },
+  const latest = await prisma.animal.findFirst({
+    where:   { farmId },
+    select:  { tag: true },
+    orderBy: { tag: 'desc' },
   })
 
-  const maxNum = animals.reduce((max, animal) => {
-    const match = animal.tag.match(/(\d+)$/)
-    const num = match ? parseInt(match[1]!, 10) : 0
-    return Math.max(max, num)
-  }, 0)
+  const maxNum = latest
+    ? (parseInt(latest.tag.match(/(\d+)$/)?.[1] ?? '0', 10) || 0)
+    : 0
 
   return `BOV-${String(maxNum + 1).padStart(4, '0')}`
 }

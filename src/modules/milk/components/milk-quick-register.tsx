@@ -6,7 +6,7 @@
  * Usado no dashboard /milk para registro sem sair da página.
  */
 
-import { useState, useTransition, useMemo } from 'react'
+import { useState, useEffect, useTransition, useMemo, useRef } from 'react'
 import { Plus, MilkIcon, Search, Loader2, CheckCircle2 } from 'lucide-react'
 import {
   Sheet,
@@ -22,10 +22,15 @@ import { useToast }     from '@/hooks/use-toast'
 import { useMilkQueue } from '@/stores/milk-queue'
 import { registerMilkRecord } from '../actions'
 import { getDefaultShift, MilkShiftTabs } from './milk-shift-tabs'
-import { MILK_CATEGORY_COLORS, isOfflineCandidate } from '../constants'
+import { MILK_CATEGORY_COLORS } from '../constants'
 import { cn } from '@/lib/utils'
 import { CATEGORY_LABELS } from '@/modules/shared/domain/animal-labels'
 import type { AnimalForMilk } from '../types'
+
+// ─── Constantes ────────────────────────────────────────────
+
+/** Máximo de animais exibidos na lista — previne lentidão de render */
+const MAX_VISIBLE_ANIMALS = 50
 
 // ─── Estado tipado como union discriminada ─────────────────
 
@@ -47,10 +52,18 @@ export function MilkQuickRegister({ farmId, animals }: MilkQuickRegisterProps) {
   const [step, setStep]       = useState<QuickRegisterStep>({ kind: 'animal' })
   const [search, setSearch]   = useState('')
   const [liters, setLiters]   = useState('')
-  const [shift, setShift]     = useState(getDefaultShift())
+  // Inicia com MORNING para SSR; useEffect corrige para o turno local
+  // sem causar hydration mismatch (servidor não conhece o fuso do cliente).
+  const [shift, setShift]     = useState<'MORNING' | 'AFTERNOON'>('MORNING')
   const [isPending, start]    = useTransition()
   const { toast }             = useToast()
   const { add: addToQueue }   = useMilkQueue()
+  const litersInputRef        = useRef<HTMLInputElement>(null)
+
+  // Aplica o turno local após a montagem do componente
+  useEffect(() => {
+    setShift(getDefaultShift())
+  }, [])
 
   function handleOpenChange(v: boolean) {
     setOpen(v)
@@ -62,16 +75,40 @@ export function MilkQuickRegister({ farmId, animals }: MilkQuickRegisterProps) {
     }
   }
 
+  // Ao avançar para o step de litros, foca o input após a animação do Sheet
+  function selectAnimal(animal: AnimalForMilk) {
+    setStep({ kind: 'liters', animal })
+    // Aguarda a animação de transição do Sheet terminar antes de focar
+    setTimeout(() => litersInputRef.current?.focus(), 300)
+  }
+
   // Filtragem client-side — tag, nome e lote (consistente com MilkRegisterForm)
   const filteredAnimals = useMemo(() => {
-    if (!search.trim()) return animals
-    const q = search.toLowerCase()
-    return animals.filter(
-      (a) =>
+    const base = search.trim()
+      ? animals.filter((a) => {
+          const q = search.toLowerCase()
+          return (
+            a.tag.toLowerCase().includes(q) ||
+            (a.name ?? '').toLowerCase().includes(q) ||
+            (a.lot?.name ?? '').toLowerCase().includes(q)
+          )
+        })
+      : animals
+    // Limita a lista para evitar travamento de render com muitos animais
+    return base.slice(0, MAX_VISIBLE_ANIMALS)
+  }, [animals, search])
+
+  const hasMoreAnimals = useMemo(() => {
+    if (!search.trim()) return animals.length > MAX_VISIBLE_ANIMALS
+    const total = animals.filter((a) => {
+      const q = search.toLowerCase()
+      return (
         a.tag.toLowerCase().includes(q) ||
         (a.name ?? '').toLowerCase().includes(q) ||
-        (a.lot?.name ?? '').toLowerCase().includes(q),
-    )
+        (a.lot?.name ?? '').toLowerCase().includes(q)
+      )
+    }).length
+    return total > MAX_VISIBLE_ANIMALS
   }, [animals, search])
 
   function handleSubmit() {
@@ -97,7 +134,8 @@ export function MilkQuickRegister({ farmId, animals }: MilkQuickRegisterProps) {
         return
       }
 
-      if (isOfflineCandidate(result.error)) {
+      // kind === 'network': falha de rede/servidor → enfileirar offline
+      if (result.kind === 'network') {
         addToQueue({
           farmId,
           animalId:   step.animal.id,
@@ -107,11 +145,12 @@ export function MilkQuickRegister({ farmId, animals }: MilkQuickRegisterProps) {
           shift,
           recordedAt: new Date().toISOString(),
         })
-        toast({ title: 'Salvo offline', description: 'Sincroniza automaticamente.' })
+        toast({ title: 'Salvo offline', description: 'Será enviado quando a conexão voltar.' })
         handleOpenChange(false)
         return
       }
 
+      // kind === 'domain': erro de regra de negócio → exibir mensagem
       toast({ title: 'Erro', description: result.error, variant: 'destructive' })
     })
   }
@@ -153,7 +192,6 @@ export function MilkQuickRegister({ farmId, animals }: MilkQuickRegisterProps) {
                   onChange={(e) => setSearch(e.target.value)}
                   className="h-11 pl-9"
                   style={{ fontSize: '16px' }}
-                  autoFocus
                   autoComplete="off"
                 />
               </div>
@@ -166,35 +204,42 @@ export function MilkQuickRegister({ farmId, animals }: MilkQuickRegisterProps) {
                       : 'Nenhum animal encontrado'}
                   </div>
                 ) : (
-                  filteredAnimals.map((animal) => (
-                    <button
-                      key={animal.id}
-                      type="button"
-                      onClick={() => setStep({ kind: 'liters', animal })}
-                      className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-muted/50 active:bg-muted transition-colors text-left min-h-[56px]"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="font-mono text-sm font-bold">{animal.tag}</span>
-                          {animal.name && (
-                            <span className="text-sm text-muted-foreground truncate">
-                              · {animal.name}
+                  <>
+                    {filteredAnimals.map((animal) => (
+                      <button
+                        key={animal.id}
+                        type="button"
+                        onClick={() => selectAnimal(animal)}
+                        className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-muted/50 active:bg-muted transition-colors text-left min-h-[56px]"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="font-mono text-sm font-bold">{animal.tag}</span>
+                            {animal.name && (
+                              <span className="text-sm text-muted-foreground truncate">
+                                · {animal.name}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className={cn('text-xs', MILK_CATEGORY_COLORS[animal.category] ?? '')}>
+                              {CATEGORY_LABELS[animal.category]}
                             </span>
-                          )}
+                            {animal.lot && (
+                              <span className="text-xs text-muted-foreground truncate">
+                                · {animal.lot.name}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className={cn('text-xs', MILK_CATEGORY_COLORS[animal.category] ?? '')}>
-                            {CATEGORY_LABELS[animal.category]}
-                          </span>
-                          {animal.lot && (
-                            <span className="text-xs text-muted-foreground truncate">
-                              · {animal.lot.name}
-                            </span>
-                          )}
-                        </div>
+                      </button>
+                    ))}
+                    {hasMoreAnimals && (
+                      <div className="px-4 py-3 text-center text-xs text-muted-foreground">
+                        Mostrando {MAX_VISIBLE_ANIMALS} de {animals.length} — refine a busca para ver mais
                       </div>
-                    </button>
-                  ))
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -230,6 +275,7 @@ export function MilkQuickRegister({ farmId, animals }: MilkQuickRegisterProps) {
                 <Label>Produção (litros)</Label>
                 <div className="relative">
                   <Input
+                    ref={litersInputRef}
                     type="number"
                     inputMode="decimal"
                     placeholder="0.0"
@@ -240,7 +286,6 @@ export function MilkQuickRegister({ farmId, animals }: MilkQuickRegisterProps) {
                     onChange={(e) => setLiters(e.target.value)}
                     className="h-20 text-4xl text-center font-bold pr-14"
                     style={{ fontSize: '36px' }}
-                    autoFocus
                     autoComplete="off"
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xl text-muted-foreground font-medium">

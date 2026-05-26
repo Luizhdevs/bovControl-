@@ -40,14 +40,16 @@ export async function getDailyMilkSummary(
   })
 
   // Acumula em passo único: total, por turno e por animal
-  const byShift     = { MORNING: 0, AFTERNOON: 0, EVENING: 0 }
-  const animalIds   = new Set<string>()
-  let totalLiters   = 0
-  const byAnimal    = new Map<string, typeof records>()
+  const byShift   = { MORNING: 0, AFTERNOON: 0 }
+  const animalIds = new Set<string>()
+  let totalLiters = 0
+  const byAnimal  = new Map<string, typeof records>()
 
   for (const r of records) {
     totalLiters += r.liters
-    byShift[r.shift as keyof typeof byShift] += r.liters
+    if (r.shift === 'MORNING' || r.shift === 'AFTERNOON') {
+      byShift[r.shift] += r.liters
+    }
     animalIds.add(r.animalId)
 
     const bucket = byAnimal.get(r.animalId)

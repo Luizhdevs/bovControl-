@@ -367,7 +367,6 @@ enum ReproductionStatus {
 enum MilkShift {
   MORNING
   AFTERNOON
-  EVENING
 }
 
 enum AlertType {

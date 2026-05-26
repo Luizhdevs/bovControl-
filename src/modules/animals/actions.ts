@@ -218,28 +218,31 @@ export async function addAnimalPhoto(
     const guard = canUploadPhoto(animal)
     if (!guard.allowed) return { success: false, error: guard.reason }
 
-    // Se for marcada como primária, desmarca as outras
-    if (parsed.data.isPrimary) {
-      await prisma.animalPhoto.updateMany({
+    // Operações atômicas: unset primary + count + create em uma transação
+    const photo = await prisma.$transaction(async (tx) => {
+      // Se for marcada como primária, desmarca as outras
+      if (parsed.data.isPrimary) {
+        await tx.animalPhoto.updateMany({
+          where: { animalId: parsed.data.animalId },
+          data:  { isPrimary: false },
+        })
+      }
+
+      // Primeira foto é automaticamente primária
+      const isFirst = (await tx.animalPhoto.count({
         where: { animalId: parsed.data.animalId },
-        data:  { isPrimary: false },
+      })) === 0
+
+      return tx.animalPhoto.create({
+        data: {
+          animalId:  parsed.data.animalId,
+          url:       parsed.data.url,
+          caption:   parsed.data.caption ?? null,
+          takenAt:   parsed.data.takenAt,
+          isPrimary: isFirst || parsed.data.isPrimary,
+        },
+        select: { id: true },
       })
-    }
-
-    // Primeira foto é automaticamente primária
-    const isFirst = (await prisma.animalPhoto.count({
-      where: { animalId: parsed.data.animalId },
-    })) === 0
-
-    const photo = await prisma.animalPhoto.create({
-      data: {
-        animalId:  parsed.data.animalId,
-        url:       parsed.data.url,
-        caption:   parsed.data.caption ?? null,
-        takenAt:   parsed.data.takenAt,
-        isPrimary: isFirst || parsed.data.isPrimary,
-      },
-      select: { id: true },
     })
 
     revalidatePath(`/animals/${parsed.data.animalId}`)
@@ -315,7 +318,7 @@ export async function deactivateAnimal(
 
     const animal = await prisma.animal.findFirst({
       where:  { id: animalId, farmId },
-      select: { id: true, sex: true, category: true, status: true, birthType: true },
+      select: { id: true, sex: true, category: true, status: true, birthType: true, lotId: true },
     })
     if (!animal) return { success: false, error: 'Animal não encontrado' }
 
@@ -339,6 +342,11 @@ export async function deactivateAnimal(
 
     revalidatePath('/animals')
     revalidatePath(`/animals/${animalId}`)
+    // Revalida página do lote de origem para atualizar contagem de animais
+    if (animal.lotId) {
+      revalidatePath('/lots')
+      revalidatePath(`/lots/${animal.lotId}`)
+    }
 
     return { success: true, data: undefined }
   } catch (error) {
