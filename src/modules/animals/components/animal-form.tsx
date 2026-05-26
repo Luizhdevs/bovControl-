@@ -119,7 +119,7 @@ export function AnimalForm({
 
   // ── Formulário ──────────────────────────────────────────
 
-  type FormData = mode extends 'create' ? CreateAnimalInput : UpdateAnimalInput
+  type FormData = typeof mode extends 'create' ? CreateAnimalInput : UpdateAnimalInput
 
   const schema = mode === 'create' ? createAnimalSchema : updateAnimalSchema
 

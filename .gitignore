@@ -33,3 +33,6 @@ Thumbs.db
 
 # Prisma
 prisma/migrations/
+
+# Uploads locais (dev)
+public/uploads/

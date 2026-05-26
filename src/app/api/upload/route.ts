@@ -1,60 +1,71 @@
 /**
- * API Route de upload de fotos — usa Vercel Blob.
+ * API Route de upload de fotos — armazenamento local (desenvolvimento).
  *
- * Instalar: npm install @vercel/blob
- * Configurar: BLOB_READ_WRITE_TOKEN no .env
+ * Aceita multipart/form-data com campo "file".
+ * Salva em public/uploads/animals/ e retorna a URL absoluta.
  *
- * Fluxo:
- * 1. Cliente chama `upload()` do @vercel/blob/client apontando para esta rota
- * 2. Esta rota valida autenticação e gera token
- * 3. O blob é enviado direto para o CDN da Vercel
- * 4. URL retornada é salva via addAnimalPhoto action
+ * Produção: substituir writeFile por put() do @vercel/blob com
+ * BLOB_READ_WRITE_TOKEN real e remover as importações de fs/path.
  */
 
-import { handleUpload, type HandleUploadBody } from '@vercel/blob/next'
-import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { writeFile, mkdir } from 'fs/promises'
+import { join }             from 'path'
+import { randomUUID }       from 'crypto'
+import { NextResponse }     from 'next/server'
+import { auth }             from '@/lib/auth'
+
+const ALLOWED_TYPES  = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic']
+const MAX_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const body = (await request.json()) as HandleUploadBody
+  // 1. Autenticação
+  const session = await auth()
+  if (!session) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  }
 
   try {
-    const jsonResponse = await handleUpload({
-      body,
-      request,
-      onBeforeGenerateToken: async () => {
-        // Verifica autenticação antes de gerar token de upload
-        const session = await auth()
-        if (!session) {
-          throw new Error('Não autorizado')
-        }
+    // 2. Lê o arquivo do FormData
+    const formData = await request.formData()
+    const file = formData.get('file') as File | null
 
-        return {
-          // Tipos de imagem permitidos
-          allowedContentTypes: [
-            'image/jpeg',
-            'image/jpg',
-            'image/png',
-            'image/webp',
-            'image/heic',
-          ],
-          // Tamanho máximo: 10MB
-          maximumSizeInBytes: 10 * 1024 * 1024,
-          // Prefixo do path no blob storage
-          tokenPayload: JSON.stringify({ userId: session.user.id }),
-        }
-      },
-      onUploadCompleted: async ({ blob }) => {
-        // Opcional: log de upload ou processamento pós-upload
-        console.log('[upload] Blob uploaded:', blob.url)
-      },
-    })
+    if (!file || file.size === 0) {
+      return NextResponse.json({ error: 'Nenhum arquivo enviado' }, { status: 400 })
+    }
 
-    return NextResponse.json(jsonResponse)
+    // 3. Valida MIME type
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return NextResponse.json(
+        { error: 'Formato não permitido. Use JPEG, PNG, WebP ou HEIC.' },
+        { status: 400 },
+      )
+    }
+
+    // 4. Valida tamanho
+    if (file.size > MAX_SIZE_BYTES) {
+      return NextResponse.json(
+        { error: 'Arquivo muito grande. Máximo de 10 MB.' },
+        { status: 400 },
+      )
+    }
+
+    // 5. Gera nome único e salva em public/uploads/animals/
+    const ext      = (file.name.split('.').pop() ?? 'jpg').toLowerCase()
+    const filename = `${randomUUID()}.${ext}`
+
+    const uploadDir = join(process.cwd(), 'public', 'uploads', 'animals')
+    await mkdir(uploadDir, { recursive: true })
+
+    const buffer = Buffer.from(await file.arrayBuffer())
+    await writeFile(join(uploadDir, filename), buffer)
+
+    // 6. URL absoluta — passa em z.string().url() do addPhotoSchema
+    const origin = new URL(request.url).origin
+    const url    = `${origin}/uploads/animals/${filename}`
+
+    return NextResponse.json({ url })
   } catch (error) {
-    return NextResponse.json(
-      { error: (error as Error).message },
-      { status: 400 },
-    )
+    console.error('[upload]', error)
+    return NextResponse.json({ error: 'Erro interno no upload' }, { status: 500 })
   }
 }

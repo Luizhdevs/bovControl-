@@ -1,10 +1,8 @@
 'use client'
 
-import { useTransition, useState, useRef } from 'react'
+import React, { useTransition, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast }  from '@/hooks/use-toast'
-import { upload }    from '@vercel/blob/client'
-
 import { Button }   from '@/components/ui/button'
 import { Input }    from '@/components/ui/input'
 import { Label }    from '@/components/ui/label'
@@ -364,46 +362,78 @@ function PhotoSheet({
   open:     boolean
   onClose:  () => void
 }) {
-  const [caption, setCaption]   = useState('')
-  const [isPending, setIsPending] = useState(false)
-  const fileRef                 = useRef<HTMLInputElement>(null)
-  const { toast }               = useToast()
+  const [caption, setCaption] = useState('')
+  const [isPending, start]    = useTransition()
+  const fileRef               = useRef<HTMLInputElement>(null)
+  const { toast }             = useToast()
 
-  async function handleUpload() {
+  // Espelha as restrições do /api/upload — feedback imediato antes do request
+  const ALLOWED_TYPES  = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic']
+  const MAX_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
+
+  function handleUpload() {
     const file = fileRef.current?.files?.[0]
     if (!file) {
       toast({ title: 'Selecione uma foto', variant: 'destructive' })
       return
     }
 
-    setIsPending(true)
-    try {
-      // Upload direto para Vercel Blob
-      const blob = await upload(file.name, file, {
-        access:          'public',
-        handleUploadUrl: '/api/upload',
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      toast({
+        title:       'Formato inválido',
+        description: 'Use JPEG, PNG, WebP ou HEIC.',
+        variant:     'destructive',
       })
-
-      const result = await addAnimalPhoto(farmId, {
-        animalId,
-        url:     blob.url,
-        caption: caption || null,
-      })
-
-      if (!result.success) {
-        toast({ title: 'Erro', description: result.error, variant: 'destructive' })
-        return
-      }
-
-      toast({ title: 'Foto adicionada!' })
-      setCaption('')
-      if (fileRef.current) fileRef.current.value = ''
-      onClose()
-    } catch {
-      toast({ title: 'Erro no upload', description: 'Verifique a conexão.', variant: 'destructive' })
-    } finally {
-      setIsPending(false)
+      return
     }
+
+    if (file.size > MAX_SIZE_BYTES) {
+      toast({
+        title:       'Arquivo muito grande',
+        description: 'Máximo de 10 MB por foto.',
+        variant:     'destructive',
+      })
+      return
+    }
+
+    start(async () => {
+      try {
+        // Envia o arquivo para /api/upload via FormData
+        const form = new FormData()
+        form.append('file', file)
+
+        const response = await fetch('/api/upload', { method: 'POST', body: form })
+        const data     = (await response.json()) as { url?: string; error?: string }
+
+        if (!response.ok || !data.url) {
+          toast({
+            title:       'Erro no upload',
+            description: data.error ?? 'Tente novamente.',
+            variant:     'destructive',
+          })
+          return
+        }
+
+        // Persiste a URL no banco via Server Action
+        const result = await addAnimalPhoto(farmId, {
+          animalId,
+          url:     data.url,
+          caption: caption || null,
+        })
+
+        if (!result.success) {
+          toast({ title: 'Erro', description: result.error, variant: 'destructive' })
+          return
+        }
+
+        toast({ title: 'Foto adicionada!' })
+        setCaption('')
+        if (fileRef.current) fileRef.current.value = ''
+        onClose()
+      } catch {
+        toast({ title: 'Erro no upload', description: 'Verifique a conexão.', variant: 'destructive' })
+      }
+    })
   }
 
   return (
@@ -430,7 +460,6 @@ function PhotoSheet({
               ref={fileRef}
               type="file"
               accept="image/*"
-              capture="environment"   // Abre câmera traseira no mobile
               className="hidden"
             />
           </div>
@@ -462,6 +491,45 @@ function PhotoSheet({
         </div>
       </SheetContent>
     </Sheet>
+  )
+}
+
+// ─── Botão "+ Foto" reutilizável ──────────────────────────
+//
+// Client component standalone — usado no SectionCard "Linha do Tempo"
+// do Server Component da página, onde não há acesso ao estado do
+// AnimalQuickActions. Gerencia seu próprio estado de abertura do Sheet.
+
+export function AddPhotoButton({
+  animalId,
+  farmId,
+  className,
+  children = '+ Foto',
+}: {
+  animalId:  string
+  farmId:    string
+  className?: string
+  children?:  React.ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <>
+      <button
+        type="button"
+        className={className}
+        onClick={() => setOpen(true)}
+      >
+        {children}
+      </button>
+
+      <PhotoSheet
+        animalId={animalId}
+        farmId={farmId}
+        open={open}
+        onClose={() => setOpen(false)}
+      />
+    </>
   )
 }
 

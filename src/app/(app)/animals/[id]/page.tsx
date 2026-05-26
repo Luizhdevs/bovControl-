@@ -5,7 +5,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 import { getAnimalById, getLotsForSelect } from '@/modules/animals/queries'
-import { AnimalQuickActions }  from '@/modules/animals/components/animal-quick-actions'
+import { AnimalQuickActions, AddPhotoButton }  from '@/modules/animals/components/animal-quick-actions'
 import { AnimalTimeline }      from '@/modules/animals/components/animal-timeline'
 import { SectionCard, InfoRow, InfoRows } from '@/components/shared/section-card'
 import { PageHeader }          from '@/components/shared/page-header'
@@ -277,12 +277,11 @@ export default async function AnimalDetailPage({
         subtitle={`${animal._count.photos} foto${animal._count.photos !== 1 ? 's' : ''}`}
         action={
           isActive ? (
-            <button
+            <AddPhotoButton
+              animalId={animal.id}
+              farmId={farmId}
               className="text-xs text-primary hover:underline"
-              // Abre o sheet de foto — será controlado pelo AnimalQuickActions
-            >
-              + Foto
-            </button>
+            />
           ) : undefined
         }
         noPadding
