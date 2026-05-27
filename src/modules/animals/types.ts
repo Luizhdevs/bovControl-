@@ -70,6 +70,15 @@ export type AnimalStats = {
   steers:  number
 }
 
+// ─── Resultado paginado da listagem ──────────────────────
+
+export type AnimalPage = {
+  items:     AnimalListItem[]
+  total:     number
+  page:      number
+  pageCount: number
+}
+
 // ─── Resultado padrão das Server Actions ──────────────────
 
 export type ActionResult<T = void> =

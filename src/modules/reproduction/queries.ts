@@ -39,13 +39,13 @@ export async function getReproductionHistory(
   return prisma.reproduction.findMany({
     where: {
       animal: { farmId },
-      date: { gte: since },
+      date:   { gte: since },
     },
     include: {
       animal: { select: { id: true, tag: true, name: true, category: true, sex: true } },
     },
     orderBy: { date: 'desc' },
-    take:    200,
+    take:    100,
   })
 }
 
@@ -73,49 +73,67 @@ export async function getAnimalsForReproduction(
   })
 }
 
-// ─── Animais prenhes (PREGNANCY_CHECK CONFIRMED mais recente) ─
+// ─── Animais prenhes — DISTINCT ON (1 query eficiente) ────
 
 /**
- * Retorna animais cujo último PREGNANCY_CHECK tem status CONFIRMED.
- * Agrupa em JS para evitar limitações do Prisma com distinct+orderBy.
+ * Usa DISTINCT ON para obter o último PREGNANCY_CHECK por animal.
+ * Muito mais eficiente que a abordagem anterior (JavaScript groupBy).
+ *
+ * @param limit  Se informado, retorna apenas os primeiros N mais próximos do parto.
  */
-export async function getPregnantAnimals(farmId: string): Promise<UpcomingCalving[]> {
-  const checks = await prisma.reproduction.findMany({
-    where: {
-      animal: { farmId },
-      type:   'PREGNANCY_CHECK',
-    },
-    include: {
-      animal: { select: { id: true, tag: true, name: true } },
-    },
-    orderBy: { date: 'desc' },
-    take:    500, // limite de escala
-  })
-
-  // Para cada animal, pega apenas o check mais recente
-  const latestByAnimal = new Map<string, typeof checks[0]>()
-  for (const check of checks) {
-    if (!latestByAnimal.has(check.animalId)) {
-      latestByAnimal.set(check.animalId, check)
-    }
+export async function getPregnantAnimals(
+  farmId: string,
+  limit?: number,
+): Promise<UpcomingCalving[]> {
+  type RawRow = {
+    animalId:      string
+    status:        string
+    confirmedAt:   Date
+    nextCheckDate: Date | null
+    tag:           string
+    name:          string | null
   }
+
+  // Subquery garante: (1) DISTINCT ON pega o ÚLTIMO check por animal,
+  // (2) filtro externo WHERE status='CONFIRMED' descarta animais cujo
+  // check mais recente foi FAILED — correto mesmo sem filtro JS.
+  const rows = await prisma.$queryRaw<RawRow[]>`
+    SELECT latest.*
+    FROM (
+      SELECT DISTINCT ON (r."animalId")
+        r."animalId"      AS "animalId",
+        r.status,
+        r.date            AS "confirmedAt",
+        r."nextCheckDate",
+        a.tag,
+        a.name
+      FROM reproductions r
+      JOIN animals a ON a.id = r."animalId"
+      WHERE r.type = 'PREGNANCY_CHECK'
+        AND a."farmId" = ${farmId}
+        AND a.status   = 'ACTIVE'
+      ORDER BY r."animalId", r.date DESC
+    ) latest
+    WHERE latest.status = 'CONFIRMED'
+  `
 
   const today = new Date()
 
-  return Array.from(latestByAnimal.values())
-    .filter((check) => check.status === 'CONFIRMED')
-    .map((check) => ({
-      animalId:            check.animalId,
-      tag:                 check.animal.tag,
-      name:                check.animal.name,
-      expectedCalvingDate: check.nextCheckDate ?? addDays(check.date, 280),
+  const result = rows
+    .map((r) => ({
+      animalId:            r.animalId,
+      tag:                 r.tag,
+      name:                r.name,
+      expectedCalvingDate: r.nextCheckDate ?? addDays(r.confirmedAt, 280),
       daysUntilCalving:    differenceInDays(
-        check.nextCheckDate ?? addDays(check.date, 280),
+        r.nextCheckDate ?? addDays(r.confirmedAt, 280),
         today,
       ),
-      confirmedAt: check.date,
+      confirmedAt: r.confirmedAt,
     }))
     .sort((a, b) => a.daysUntilCalving - b.daysUntilCalving)
+
+  return limit !== undefined ? result.slice(0, limit) : result
 }
 
 // ─── Resumo reprodutivo de um animal ──────────────────────
@@ -146,15 +164,11 @@ export async function getAnimalReproductionSummary(
   const events      = animal.reproductions
   const totalEvents = events.length
 
-  // Último check de gestação
-  const lastCheck = events.find((e) => e.type === 'PREGNANCY_CHECK')
-
-  // Última inseminação/monta
+  const lastCheck        = events.find((e) => e.type === 'PREGNANCY_CHECK')
   const lastInsemination = events.find(
     (e) => e.type === 'INSEMINATION' || e.type === 'NATURAL_MATING',
   )
 
-  // Status de prenhez derivado do check mais recente
   let pregnancyStatus: PregnancyStatus = 'unknown'
   if (lastCheck) {
     if (lastCheck.status === 'CONFIRMED') pregnancyStatus = 'pregnant'
@@ -177,10 +191,7 @@ export async function getAnimalReproductionSummary(
 
 export async function getReproductionStats(farmId: string) {
   const [totalPregnant, recentInseminations] = await Promise.all([
-    // Conta prenhes (simplificado — pode ter falsos positivos se houver FAILED posterior)
     getPregnantAnimals(farmId).then((a) => a.length),
-
-    // Inseminações e montas nos últimos 30 dias
     prisma.reproduction.count({
       where: {
         animal: { farmId },

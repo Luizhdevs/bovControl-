@@ -1,16 +1,20 @@
+'use client'
+
 import Image from 'next/image'
 import { formatDate, formatRelativeDate, cn } from '@/lib/utils'
 import { getCategoryLabel } from '@/modules/shared/domain/animal-labels'
 import { ImageIcon, Star } from 'lucide-react'
+import { PhotoDeleteButton } from './photo-delete-button'
 
 // ─── Tipos ─────────────────────────────────────────────────
 
 export type TimelinePhoto = {
-  id:        string
-  url:       string
-  caption:   string | null
-  takenAt:   Date
-  isPrimary: boolean
+  id:           string
+  url:          string
+  thumbnailUrl: string | null
+  caption:      string | null
+  takenAt:      Date
+  isPrimary:    boolean
 }
 
 export type TimelineContext = {
@@ -23,23 +27,28 @@ interface AnimalTimelineProps {
   photos:    TimelinePhoto[]
   context:   TimelineContext   // Contexto atual (category, lot, sex)
   animalTag: string
+  farmId:    string
+  canDelete: boolean
 }
 
 // ─── Item da timeline ──────────────────────────────────────
 
 interface TimelineItemProps {
-  photo:    TimelinePhoto
-  context:  TimelineContext
-  isFirst:  boolean
-  isLast:   boolean
+  photo:     TimelinePhoto
+  context:   TimelineContext
+  isLast:    boolean
+  farmId:    string
+  canDelete: boolean
 }
 
-function TimelineItem({ photo, context, isFirst, isLast }: TimelineItemProps) {
+function TimelineItem({ photo, context, isLast, farmId, canDelete }: TimelineItemProps) {
+  // Usa thumbnail para exibição (menor, mais rápido) mas mantém URL original
+  const displayUrl = photo.thumbnailUrl ?? photo.url
+
   return (
     <div className="relative flex gap-3">
       {/* Linha vertical da timeline */}
       <div className="flex flex-col items-center shrink-0">
-        {/* Ponto da timeline */}
         <div
           className={cn(
             'size-3 rounded-full border-2 mt-2 shrink-0 z-10',
@@ -48,7 +57,6 @@ function TimelineItem({ photo, context, isFirst, isLast }: TimelineItemProps) {
               : 'bg-muted-foreground/30 border-muted-foreground/50',
           )}
         />
-        {/* Linha conectora */}
         {!isLast && (
           <div className="w-px flex-1 bg-border/60 mt-1" />
         )}
@@ -76,7 +84,7 @@ function TimelineItem({ photo, context, isFirst, isLast }: TimelineItemProps) {
         {/* Foto */}
         <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden bg-muted mb-2">
           <Image
-            src={photo.url}
+            src={displayUrl}
             alt={photo.caption ?? `Foto de ${formatDate(photo.takenAt)}`}
             fill
             sizes="(max-width: 640px) 100vw, 400px"
@@ -101,9 +109,14 @@ function TimelineItem({ photo, context, isFirst, isLast }: TimelineItemProps) {
 
         {/* Caption */}
         {photo.caption && (
-          <p className="text-sm text-foreground/80 leading-snug italic">
+          <p className="text-sm text-foreground/80 leading-snug italic mb-1.5">
             "{photo.caption}"
           </p>
+        )}
+
+        {/* Botão de exclusão — apenas OWNER/MANAGER */}
+        {canDelete && (
+          <PhotoDeleteButton photoId={photo.id} farmId={farmId} />
         )}
       </div>
     </div>
@@ -139,33 +152,29 @@ function EmptyTimeline() {
  * Futuramente: o context poderá ser histórico por data (quando houver
  * rastreamento de mudança de lote/categoria por foto).
  */
-export function AnimalTimeline({ photos, context, animalTag }: AnimalTimelineProps) {
+export function AnimalTimeline({ photos, context, animalTag, farmId, canDelete }: AnimalTimelineProps) {
   if (photos.length === 0) {
     return <EmptyTimeline />
   }
 
-  // Ordena decrescente (mais recente primeiro)
-  const sorted = [...photos].sort(
-    (a, b) => new Date(b.takenAt).getTime() - new Date(a.takenAt).getTime(),
-  )
+  const sorted = [...photos].sort((a, b) => +b.takenAt - +a.takenAt)
 
   return (
     <div>
-      {/* Contador */}
       <p className="text-xs text-muted-foreground mb-4">
         {sorted.length} {sorted.length === 1 ? 'registro' : 'registros'} fotográficos de{' '}
         <span className="font-mono font-medium">{animalTag}</span>
       </p>
 
-      {/* Items da timeline */}
       <div>
         {sorted.map((photo, index) => (
           <TimelineItem
             key={photo.id}
             photo={photo}
             context={context}
-            isFirst={index === 0}
             isLast={index === sorted.length - 1}
+            farmId={farmId}
+            canDelete={canDelete}
           />
         ))}
       </div>

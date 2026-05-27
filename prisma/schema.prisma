@@ -19,9 +19,10 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts  Account[]
-  sessions  Session[]
-  farmUsers FarmUser[]
+  accounts     Account[]
+  sessions     Session[]
+  farmUsers    FarmUser[]
+  sentInvites  Invite[]   @relation("InviteCreator")
 
   @@map("users")
 }
@@ -77,11 +78,18 @@ model Farm {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users    FarmUser[]
-  animals  Animal[]
-  lots     Lot[]
-  pastures Pasture[]
-  alerts   Alert[]
+  // ── Controle de armazenamento ───────────────────────────
+  // Mantidos sincronizados via $transaction em todo upload/delete.
+  storageUsedMb Float @default(0)
+  imageCount    Int   @default(0)
+
+  users            FarmUser[]
+  animals          Animal[]
+  lots             Lot[]
+  pastures         Pasture[]
+  alerts           Alert[]
+  invites          Invite[]
+  milkingSessions  MilkingSession[]
 
   @@map("farms")
 }
@@ -142,6 +150,8 @@ model Animal {
 
   @@unique([farmId, tag])
   @@index([farmId, status])
+  @@index([farmId, category])
+  @@index([farmId, createdAt])
   @@index([farmId, lotId])
   @@index([motherId])
   @@index([fatherId])
@@ -149,12 +159,14 @@ model Animal {
 }
 
 model AnimalPhoto {
-  id        String   @id @default(cuid())
-  animalId  String
-  url       String
-  caption   String?
-  takenAt   DateTime @default(now())
-  isPrimary Boolean  @default(false)
+  id           String   @id @default(cuid())
+  animalId     String
+  url          String   // URL da imagem original otimizada
+  thumbnailUrl String?  // URL do thumbnail 300px (gerado automaticamente)
+  caption      String?
+  takenAt      DateTime @default(now())
+  isPrimary    Boolean  @default(false)
+  sizeKb       Int      @default(0)  // Tamanho em KB (original + thumb combinados)
 
   animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
 
@@ -188,7 +200,7 @@ model HealthEvent {
 
   animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
 
-  @@index([animalId])
+  @@index([animalId, occurredAt])
   @@map("health_events")
 }
 
@@ -250,25 +262,97 @@ model Reproduction {
 
   animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
 
-  @@index([animalId])
+  @@index([animalId, type, date])
   @@map("reproductions")
 }
 
 // ─── PRODUÇÃO DE LEITE ─────────────────────────────────────
 
 model MilkRecord {
-  id         String     @id @default(cuid())
-  animalId   String
-  farmId     String
-  liters     Float
-  shift      MilkShift
-  recordedAt DateTime   @default(now())
+  id              String     @id @default(cuid())
+  animalId        String
+  farmId          String
+  liters          Float
+  shift           MilkShift
+  recordedAt      DateTime   @default(now())
+  // Para deduplicação de sync offline: o cliente gera UUID; o servidor
+  // rejeita duplicatas silenciosamente e retorna o registro existente.
+  idempotencyKey  String?    @unique @map("idempotency_key")
 
   animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
 
   @@index([farmId, recordedAt])
   @@index([animalId, recordedAt])
   @@map("milk_records")
+}
+
+// ─── ORDENHA POR SESSÃO ────────────────────────────────────
+// Cada registro = 1 ordenha (manhã ou tarde) para toda a fazenda.
+// Substitui o registro individual por animal na UI — MilkRecord permanece
+// intacto para futura rastreabilidade individual (Fase 2).
+
+model MilkingSession {
+  id             String    @id @default(cuid())
+  farmId         String
+  shift          MilkShift
+  date           DateTime  @db.Date
+  totalLiters    Float
+  milkingCows    Int
+  notes          String?
+  // Deduplicação de sync offline: cliente gera UUID antes de enviar
+  idempotencyKey String?   @unique @map("idempotency_key")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  farm Farm @relation(fields: [farmId], references: [id], onDelete: Cascade)
+
+  // Uma fazenda só pode ter 1 sessão por turno por dia
+  @@unique([farmId, shift, date])
+  @@index([farmId, date])
+  @@map("milking_sessions")
+}
+
+// ─── CONVITES ──────────────────────────────────────────────
+
+model Invite {
+  id          String       @id @default(cuid())
+  farmId      String
+  email       String
+  role        UserRole     @default(WORKER)
+  token       String       @unique
+  status      InviteStatus @default(PENDING)
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdById String
+  createdAt   DateTime     @default(now())
+
+  farm      Farm @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  createdBy User @relation("InviteCreator", fields: [createdById], references: [id])
+
+  @@index([farmId, status])
+  @@index([email, status])
+  @@map("invites")
+}
+
+// ─── AUDITORIA ─────────────────────────────────────────────
+// Append-only. Nunca deletar entradas de audit.
+// farmId/userId são strings diretas — sem FK para evitar CASCADE acidental.
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  farmId    String
+  userId    String
+  action    String   // 'CREATE' | 'UPDATE' | 'DELETE'
+  entity    String   // 'MilkRecord' | 'HealthEvent' | 'Animal' | etc.
+  entityId  String
+  before    Json?
+  after     Json?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([farmId, entity, createdAt])
+  @@index([entityId])
+  @@map("audit_logs")
 }
 
 // ─── ALERTAS ───────────────────────────────────────────────
@@ -349,6 +433,7 @@ enum HealthEventType {
   DISEASE
   DEWORMING
   EXAM
+  MEDICATION
   OTHER
 }
 
@@ -388,4 +473,11 @@ enum Priority {
   HIGH
   MEDIUM
   LOW
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
 }

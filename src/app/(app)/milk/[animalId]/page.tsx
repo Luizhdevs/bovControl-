@@ -13,7 +13,7 @@ import { getCategoryLabel }  from '@/modules/shared/domain/animal-labels'
 import { MilkIcon, Plus }    from 'lucide-react'
 import { Button }            from '@/components/ui/button'
 
-// ─── Metadata dinâmica ─────────────────────────────────────
+// ─── Metadata dinâmica ─────────────────────────────────────────
 
 export async function generateMetadata({
   params,
@@ -40,7 +40,7 @@ export async function generateMetadata({
   return { title: `Leite — ${display} | BovControl` }
 }
 
-// ─── Page ──────────────────────────────────────────────────
+// ─── Page ──────────────────────────────────────────────────────
 
 export default async function MilkAnimalPage({
   params,
@@ -120,19 +120,19 @@ export default async function MilkAnimalPage({
         </div>
       </div>
 
-      {/* Ação: registrar — navega ao /milk/new com animal pré-selecionado */}
+      {/* Ação: registrar individual — modo legado */}
       {isActive && (
         <Button asChild className="w-full h-12 gap-2">
           <Link href={`/milk/new?animalId=${animal.id}`}>
             <Plus className="size-4" />
-            Registrar Produção
+            Registrar Produção Individual
           </Link>
         </Button>
       )}
 
       {/* Lista de registros */}
       <SectionCard
-        title="Registros"
+        title="Registros individuais"
         subtitle={`${formatLiters(totalLiters)} total · ${records.length} ordenhas`}
         noPadding
       >
@@ -140,8 +140,8 @@ export default async function MilkAnimalPage({
           <div className="p-4">
             <EmptyState
               icon={<MilkIcon />}
-              title="Sem registros"
-              description="Nenhuma produção registrada para este animal ainda."
+              title="Sem registros individuais"
+              description="A produção desta vaca é registrada por sessão de ordenha da fazenda."
             />
           </div>
         ) : (

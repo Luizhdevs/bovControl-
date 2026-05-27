@@ -1,53 +1,44 @@
 import type { MilkRecord, Animal } from '@prisma/client'
 
-// ─── Registro individual ───────────────────────────────────
+// ─── Registro individual (Fase 2 — rastreabilidade por animal) ─
+// MilkRecord permanece intacto na arquitetura para futura evolução.
 
 export type MilkRecordWithAnimal = MilkRecord & {
   animal: Pick<Animal, 'id' | 'tag' | 'name' | 'category'>
 }
 
-// ─── Resumo por animal ─────────────────────────────────────
+// ─── Sessão de ordenha ─────────────────────────────────────────
+// Cada sessão = 1 turno (manhã ou tarde) para toda a fazenda.
 
-export type AnimalMilkSummary = {
-  animalId:  string
-  tag:       string
-  name:      string | null
-  totalDay:  number       // Litros no dia
-  records:   MilkRecord[]
+export type MilkingSessionItem = {
+  id:          string
+  shift:       'MORNING' | 'AFTERNOON'
+  date:        Date
+  totalLiters: number
+  milkingCows: number
+  avgPerCow:   number   // totalLiters / milkingCows (0 se milkingCows = 0)
+  notes:       string | null
 }
 
-// ─── Resumo diário da fazenda ──────────────────────────────
+// ─── Resumo diário (baseado em sessões) ───────────────────────
 
 export type DailyMilkSummary = {
-  date:         Date
-  totalLiters:  number
-  animalCount:  number
-  byShift: {
-    MORNING:   number
-    AFTERNOON: number
-  }
-  topAnimals:   AnimalMilkSummary[]
+  date:        Date
+  totalLiters: number
+  totalCows:   number   // max(morning.milkingCows, afternoon.milkingCows)
+  avgPerCow:   number   // totalLiters / totalCows
+  morning:     MilkingSessionItem | null
+  afternoon:   MilkingSessionItem | null
 }
 
-// ─── Animal elegível para registro de leite ───────────────
-// Usado no formulário de registro e na listagem rápida
-
-export type AnimalForMilk = {
-  id:       string
-  tag:      string
-  name:     string | null
-  category: string
-  lot:      { id: string; name: string } | null
-}
-
-// ─── Histórico diário (para gráfico) ──────────────────────
+// ─── Histórico diário (para gráfico) ──────────────────────────
 
 export type DailyProduction = {
   date:   string  // 'YYYY-MM-DD'
   liters: number
 }
 
-// ─── ActionResult (mesmo padrão dos outros módulos) ────────
+// ─── ActionResult (mesmo padrão dos outros módulos) ────────────
 // kind discrimina a origem do erro:
 //   'domain'  → regra de negócio / validação → NÃO enfileirar offline
 //   'network' → falha de rede / banco / inesperado → enfileirar offline

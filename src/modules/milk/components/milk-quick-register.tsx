@@ -1,13 +1,13 @@
 'use client'
 
 /**
- * Botão + Sheet de registro rápido de leite.
- * Two-step: seleciona animal → digita litros. Mínimo de toques.
- * Usado no dashboard /milk para registro sem sair da página.
+ * Botão + Sheet de registro rápido de ordenha.
+ * Single-step: turno → total de litros → vacas ordenhadas.
+ * Mínimo de toques, funciona offline.
  */
 
-import { useState, useEffect, useTransition, useMemo, useRef } from 'react'
-import { Plus, MilkIcon, Search, Loader2, CheckCircle2 } from 'lucide-react'
+import { useState, useEffect, useTransition, useRef } from 'react'
+import { Plus, MilkIcon, Loader2, CheckCircle2 } from 'lucide-react'
 import {
   Sheet,
   SheetContent,
@@ -15,52 +15,34 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet'
-import { Input }  from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Label }  from '@/components/ui/label'
-import { useToast }     from '@/hooks/use-toast'
-import { useMilkQueue } from '@/stores/milk-queue'
-import { registerMilkRecord } from '../actions'
+import { Input }    from '@/components/ui/input'
+import { Button }   from '@/components/ui/button'
+import { Label }    from '@/components/ui/label'
+import { useToast } from '@/hooks/use-toast'
+import { useMilkQueue }        from '@/stores/milk-queue'
+import { registerMilkingSession } from '../actions'
 import { getDefaultShift, MilkShiftTabs } from './milk-shift-tabs'
-import { MILK_CATEGORY_COLORS } from '../constants'
-import { cn } from '@/lib/utils'
-import { CATEGORY_LABELS } from '@/modules/shared/domain/animal-labels'
-import type { AnimalForMilk } from '../types'
+import { format } from 'date-fns'
 
-// ─── Constantes ────────────────────────────────────────────
-
-/** Máximo de animais exibidos na lista — previne lentidão de render */
-const MAX_VISIBLE_ANIMALS = 50
-
-// ─── Estado tipado como union discriminada ─────────────────
-
-type QuickRegisterStep =
-  | { kind: 'animal' }
-  | { kind: 'liters'; animal: AnimalForMilk }
-
-// ─── Props ─────────────────────────────────────────────────
+// ─── Props ─────────────────────────────────────────────────────
 
 interface MilkQuickRegisterProps {
-  farmId:  string
-  animals: AnimalForMilk[]
+  farmId: string
 }
 
-// ─── Componente ────────────────────────────────────────────
+// ─── Componente ────────────────────────────────────────────────
 
-export function MilkQuickRegister({ farmId, animals }: MilkQuickRegisterProps) {
+export function MilkQuickRegister({ farmId }: MilkQuickRegisterProps) {
   const [open, setOpen]       = useState(false)
-  const [step, setStep]       = useState<QuickRegisterStep>({ kind: 'animal' })
-  const [search, setSearch]   = useState('')
-  const [liters, setLiters]   = useState('')
-  // Inicia com MORNING para SSR; useEffect corrige para o turno local
-  // sem causar hydration mismatch (servidor não conhece o fuso do cliente).
   const [shift, setShift]     = useState<'MORNING' | 'AFTERNOON'>('MORNING')
+  const [liters, setLiters]   = useState('')
+  const [cows, setCows]       = useState('')
   const [isPending, start]    = useTransition()
   const { toast }             = useToast()
   const { add: addToQueue }   = useMilkQueue()
   const litersInputRef        = useRef<HTMLInputElement>(null)
 
-  // Aplica o turno local após a montagem do componente
+  // Aplica o turno local após a montagem (evita hydration mismatch)
   useEffect(() => {
     setShift(getDefaultShift())
   }, [])
@@ -68,89 +50,58 @@ export function MilkQuickRegister({ farmId, animals }: MilkQuickRegisterProps) {
   function handleOpenChange(v: boolean) {
     setOpen(v)
     if (!v) {
-      setStep({ kind: 'animal' })
-      setSearch('')
       setLiters('')
+      setCows('')
       setShift(getDefaultShift())
     }
   }
 
-  // Ao avançar para o step de litros, foca o input após a animação do Sheet
-  function selectAnimal(animal: AnimalForMilk) {
-    setStep({ kind: 'liters', animal })
-    // Aguarda a animação de transição do Sheet terminar antes de focar
-    setTimeout(() => litersInputRef.current?.focus(), 300)
-  }
-
-  // Filtragem client-side — tag, nome e lote (consistente com MilkRegisterForm)
-  const filteredAnimals = useMemo(() => {
-    const base = search.trim()
-      ? animals.filter((a) => {
-          const q = search.toLowerCase()
-          return (
-            a.tag.toLowerCase().includes(q) ||
-            (a.name ?? '').toLowerCase().includes(q) ||
-            (a.lot?.name ?? '').toLowerCase().includes(q)
-          )
-        })
-      : animals
-    // Limita a lista para evitar travamento de render com muitos animais
-    return base.slice(0, MAX_VISIBLE_ANIMALS)
-  }, [animals, search])
-
-  const hasMoreAnimals = useMemo(() => {
-    if (!search.trim()) return animals.length > MAX_VISIBLE_ANIMALS
-    const total = animals.filter((a) => {
-      const q = search.toLowerCase()
-      return (
-        a.tag.toLowerCase().includes(q) ||
-        (a.name ?? '').toLowerCase().includes(q) ||
-        (a.lot?.name ?? '').toLowerCase().includes(q)
-      )
-    }).length
-    return total > MAX_VISIBLE_ANIMALS
-  }, [animals, search])
-
   function handleSubmit() {
-    if (step.kind !== 'liters') return
+    const totalLiters = parseFloat(liters.replace(',', '.'))
+    const milkingCows = parseInt(cows, 10)
 
-    const value = parseFloat(liters.replace(',', '.'))
-    if (isNaN(value) || value <= 0) {
+    if (isNaN(totalLiters) || totalLiters <= 0) {
       toast({ title: 'Produção inválida', variant: 'destructive' })
       return
     }
+    if (isNaN(milkingCows) || milkingCows <= 0) {
+      toast({ title: 'Número de vacas inválido', variant: 'destructive' })
+      return
+    }
+
+    const today = format(new Date(), 'yyyy-MM-dd')
 
     start(async () => {
-      const result = await registerMilkRecord(farmId, {
-        animalId:   step.animal.id,
-        liters:     value,
+      const result = await registerMilkingSession(farmId, {
         shift,
-        recordedAt: new Date(),
+        date:        new Date(),
+        totalLiters,
+        milkingCows,
       })
 
       if (result.success) {
-        toast({ title: `${value}L registrado!` })
+        toast({ title: `${totalLiters}L registrado — ${milkingCows} vacas` })
         handleOpenChange(false)
         return
       }
 
-      // kind === 'network': falha de rede/servidor → enfileirar offline
       if (result.kind === 'network') {
         addToQueue({
           farmId,
-          animalId:   step.animal.id,
-          animalTag:  step.animal.tag,
-          animalName: step.animal.name,
-          liters:     value,
           shift,
-          recordedAt: new Date().toISOString(),
+          date:        today,
+          totalLiters,
+          milkingCows,
+          notes:       null,
         })
-        toast({ title: 'Salvo offline', description: 'Será enviado quando a conexão voltar.' })
+        toast({
+          title:       'Salvo offline',
+          description: 'Será enviado quando a conexão voltar.',
+        })
         handleOpenChange(false)
         return
       }
 
-      // kind === 'domain': erro de regra de negócio → exibir mensagem
       toast({ title: 'Erro', description: result.error, variant: 'destructive' })
     })
   }
@@ -163,7 +114,7 @@ export function MilkQuickRegister({ farmId, animals }: MilkQuickRegisterProps) {
         className="w-full h-13 text-base font-semibold gap-2"
       >
         <Plus className="size-5" />
-        Registrar Leite
+        Registrar Ordenha
       </Button>
 
       <Sheet open={open} onOpenChange={handleOpenChange}>
@@ -171,149 +122,89 @@ export function MilkQuickRegister({ farmId, animals }: MilkQuickRegisterProps) {
           <SheetHeader className="mb-4">
             <SheetTitle className="flex items-center gap-2">
               <MilkIcon className="size-5 text-cyan-400" />
-              {step.kind === 'animal' ? 'Selecionar Animal' : 'Registrar Produção'}
+              Registrar Ordenha
             </SheetTitle>
-            {step.kind === 'animal' && (
-              <SheetDescription>
-                Selecione a vaca ou novilha a ser ordenhada.
-              </SheetDescription>
-            )}
+            <SheetDescription>
+              Total de litros e vacas ordenhadas neste turno.
+            </SheetDescription>
           </SheetHeader>
 
-          {/* ── Step 1: Escolher animal ─────────────────── */}
-          {step.kind === 'animal' && (
-            <div className="space-y-3">
+          <div className="space-y-5">
+            {/* Turno */}
+            <div className="space-y-2">
+              <Label>Turno</Label>
+              <MilkShiftTabs value={shift} onChange={setShift} disabled={isPending} />
+            </div>
+
+            {/* Total de litros */}
+            <div className="space-y-2">
+              <Label>Total produzido (litros)</Label>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
-                  type="text"
-                  placeholder="Buscar brinco, nome ou lote..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="h-11 pl-9"
-                  style={{ fontSize: '16px' }}
+                  ref={litersInputRef}
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="0"
+                  step="0.1"
+                  min="0.1"
+                  value={liters}
+                  onChange={(e) => setLiters(e.target.value)}
+                  className="h-20 text-4xl text-center font-bold pr-14"
+                  style={{ fontSize: '36px' }}
                   autoComplete="off"
                 />
-              </div>
-
-              <div className="space-y-0.5 max-h-72 overflow-y-auto rounded-xl border border-border divide-y divide-border/50">
-                {filteredAnimals.length === 0 ? (
-                  <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                    {animals.length === 0
-                      ? 'Nenhuma vaca ativa cadastrada'
-                      : 'Nenhum animal encontrado'}
-                  </div>
-                ) : (
-                  <>
-                    {filteredAnimals.map((animal) => (
-                      <button
-                        key={animal.id}
-                        type="button"
-                        onClick={() => selectAnimal(animal)}
-                        className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-muted/50 active:bg-muted transition-colors text-left min-h-[56px]"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-baseline gap-1.5">
-                            <span className="font-mono text-sm font-bold">{animal.tag}</span>
-                            {animal.name && (
-                              <span className="text-sm text-muted-foreground truncate">
-                                · {animal.name}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className={cn('text-xs', MILK_CATEGORY_COLORS[animal.category] ?? '')}>
-                              {CATEGORY_LABELS[animal.category]}
-                            </span>
-                            {animal.lot && (
-                              <span className="text-xs text-muted-foreground truncate">
-                                · {animal.lot.name}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                    {hasMoreAnimals && (
-                      <div className="px-4 py-3 text-center text-xs text-muted-foreground">
-                        Mostrando {MAX_VISIBLE_ANIMALS} de {animals.length} — refine a busca para ver mais
-                      </div>
-                    )}
-                  </>
-                )}
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xl text-muted-foreground font-medium">
+                  L
+                </span>
               </div>
             </div>
-          )}
 
-          {/* ── Step 2: Turno + litros ──────────────────── */}
-          {step.kind === 'liters' && (
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="font-mono font-bold">{step.animal.tag}</span>
-                  {step.animal.name && (
-                    <span className="text-sm text-muted-foreground ml-1.5">
-                      · {step.animal.name}
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setStep({ kind: 'animal' })}
-                  className="text-xs text-primary underline"
-                >
-                  Trocar
-                </button>
+            {/* Vacas ordenhadas */}
+            <div className="space-y-2">
+              <Label>Vacas ordenhadas</Label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="0"
+                  step="1"
+                  min="1"
+                  value={cows}
+                  onChange={(e) => setCows(e.target.value)}
+                  className="h-14 text-2xl text-center font-bold pr-16"
+                  style={{ fontSize: '24px' }}
+                  autoComplete="off"
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">
+                  vacas
+                </span>
               </div>
-
-              <div className="space-y-2">
-                <Label>Turno</Label>
-                <MilkShiftTabs value={shift} onChange={setShift} disabled={isPending} />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Produção (litros)</Label>
-                <div className="relative">
-                  <Input
-                    ref={litersInputRef}
-                    type="number"
-                    inputMode="decimal"
-                    placeholder="0.0"
-                    step="0.1"
-                    min="0.1"
-                    max="100"
-                    value={liters}
-                    onChange={(e) => setLiters(e.target.value)}
-                    className="h-20 text-4xl text-center font-bold pr-14"
-                    style={{ fontSize: '36px' }}
-                    autoComplete="off"
-                  />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xl text-muted-foreground font-medium">
-                    L
-                  </span>
-                </div>
-              </div>
-
-              <Button
-                type="button"
-                onClick={handleSubmit}
-                disabled={isPending || !liters || parseFloat(liters) <= 0}
-                className="w-full h-13 text-base font-semibold"
-              >
-                {isPending ? (
-                  <>
-                    <Loader2 className="size-5 animate-spin mr-2" />
-                    Registrando...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="size-5 mr-2" />
-                    Confirmar
-                  </>
-                )}
-              </Button>
+              {liters && cows && parseFloat(liters) > 0 && parseInt(cows) > 0 && (
+                <p className="text-center text-xs text-muted-foreground">
+                  Média: {(parseFloat(liters.replace(',', '.')) / parseInt(cows)).toFixed(1)} L/vaca
+                </p>
+              )}
             </div>
-          )}
+
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={isPending || !liters || !cows}
+              className="w-full h-13 text-base font-semibold"
+            >
+              {isPending ? (
+                <>
+                  <Loader2 className="size-5 animate-spin mr-2" />
+                  Registrando...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="size-5 mr-2" />
+                  Confirmar Ordenha
+                </>
+              )}
+            </Button>
+          </div>
         </SheetContent>
       </Sheet>
     </>

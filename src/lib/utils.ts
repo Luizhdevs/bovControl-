@@ -7,7 +7,6 @@ import {
   differenceInYears,
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { prisma } from './prisma'
 
 // ─── Tailwind ──────────────────────────────────────────────
 
@@ -62,33 +61,6 @@ export function formatLiters(liters: number | null | undefined): string {
 export function formatCurrency(value: number | null | undefined): string {
   if (value == null) return '—'
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
-
-// ─── Geração de tag do animal ──────────────────────────────
-
-/**
- * Gera o próximo tag disponível para a fazenda no formato BOV-XXXX.
- *
- * Busca apenas o tag mais alto (1 linha) em vez de carregar todos.
- * Tags seguem BOV-NNNN (padding fixo de 4 dígitos), portanto
- * ordenação lexicográfica = ordenação numérica para até 9999 animais.
- *
- * Nota: ainda sujeito a race condition em cadastros simultâneos.
- * Para produção com múltiplos usuários simultâneos, substituir por
- * uma sequência PostgreSQL por fazenda (ALTER SEQUENCE / nextval).
- */
-export async function generateAnimalTag(farmId: string): Promise<string> {
-  const latest = await prisma.animal.findFirst({
-    where:   { farmId },
-    select:  { tag: true },
-    orderBy: { tag: 'desc' },
-  })
-
-  const maxNum = latest
-    ? (parseInt(latest.tag.match(/(\d+)$/)?.[1] ?? '0', 10) || 0)
-    : 0
-
-  return `BOV-${String(maxNum + 1).padStart(4, '0')}`
 }
 
 // ─── Re-exports de labels do domínio (retrocompatibilidade) ─

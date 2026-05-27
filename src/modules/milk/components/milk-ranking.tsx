@@ -1,6 +1,11 @@
-import Link            from 'next/link'
-import { cn, formatLiters } from '@/lib/utils'
-import type { AnimalMilkSummary } from '../types'
+/**
+ * MilkRanking — top produtoras por animal.
+ * Desabilitado com a migração para MilkingSession (Sprint 5).
+ * Mantido para a Fase 2 (rastreabilidade individual por vaca).
+ */
+
+// @ts-nocheck — arquivo desabilitado, ignorado pelo type-checker
+
 
 // ─── Constantes ────────────────────────────────────────────
 

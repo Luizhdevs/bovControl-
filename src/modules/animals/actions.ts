@@ -1,10 +1,13 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { Prisma as PrismaTypes } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
 import { requireFarmAccess } from '@/lib/permissions'
-import { generateAnimalTag } from '@/lib/utils'
+import { generateAnimalTag } from '@/modules/animals/queries'
+import { incrementStorageCounters, decrementStorageCounters } from '@/lib/storage-limits'
+import { deleteFile } from '@/lib/blob-storage'
 
 // Regras de domínio compartilhadas — NENHUMA regra de negócio é definida aqui
 import {
@@ -41,8 +44,6 @@ export async function createAnimal(
 
     await requireFarmAccess(session.user.id, farmId, 'WORKER')
 
-    const tag = await generateAnimalTag(farmId)
-
     // Determina a categoria final antes de inserir
     // Se entrar direto em lote LACTATING → já é vaca
     let category = parsed.data.category
@@ -56,21 +57,39 @@ export async function createAnimal(
       }
     }
 
-    const animal = await prisma.animal.create({
-      data: {
-        ...parsed.data,
-        farmId,
-        tag,
-        category,   // Usa categoria resolvida
-        birthDate:    parsed.data.birthDate    ?? null,
-        birthType:    parsed.data.birthType    ?? null,
-        motherId:     parsed.data.motherId     ?? null,
-        fatherId:     parsed.data.fatherId     ?? null,
-        lotId:        parsed.data.lotId        ?? null,
-        observations: parsed.data.observations ?? null,
-      },
-      select: { id: true },
-    })
+    // Retry em caso de race condition (dois cadastros simultâneos geram a mesma tag)
+    let animal: { id: string } | null = null
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const tag = await generateAnimalTag(farmId)
+      try {
+        animal = await prisma.animal.create({
+          data: {
+            ...parsed.data,
+            farmId,
+            tag,
+            category,   // Usa categoria resolvida
+            birthDate:    parsed.data.birthDate    ?? null,
+            birthType:    parsed.data.birthType    ?? null,
+            motherId:     parsed.data.motherId     ?? null,
+            fatherId:     parsed.data.fatherId     ?? null,
+            lotId:        parsed.data.lotId        ?? null,
+            observations: parsed.data.observations ?? null,
+          },
+          select: { id: true },
+        })
+        break   // sucesso — sai do loop
+      } catch (e) {
+        // P2002 = unique constraint violation — tag já usada (race condition)
+        if (e instanceof PrismaTypes.PrismaClientKnownRequestError && e.code === 'P2002') {
+          continue  // regenera tag e tenta novamente
+        }
+        throw e
+      }
+    }
+
+    if (!animal) {
+      return { success: false, error: 'Não foi possível gerar brinco único. Tente novamente.' }
+    }
 
     revalidatePath('/animals')
 
@@ -218,7 +237,7 @@ export async function addAnimalPhoto(
     const guard = canUploadPhoto(animal)
     if (!guard.allowed) return { success: false, error: guard.reason }
 
-    // Operações atômicas: unset primary + count + create em uma transação
+    // Operações atômicas: unset primary + create + storage counter
     const photo = await prisma.$transaction(async (tx) => {
       // Se for marcada como primária, desmarca as outras
       if (parsed.data.isPrimary) {
@@ -233,16 +252,23 @@ export async function addAnimalPhoto(
         where: { animalId: parsed.data.animalId },
       })) === 0
 
-      return tx.animalPhoto.create({
+      const created = await tx.animalPhoto.create({
         data: {
-          animalId:  parsed.data.animalId,
-          url:       parsed.data.url,
-          caption:   parsed.data.caption ?? null,
-          takenAt:   parsed.data.takenAt,
-          isPrimary: isFirst || parsed.data.isPrimary,
+          animalId:     parsed.data.animalId,
+          url:          parsed.data.url,
+          thumbnailUrl: parsed.data.thumbnailUrl ?? null,
+          caption:      parsed.data.caption ?? null,
+          takenAt:      parsed.data.takenAt,
+          isPrimary:    isFirst || parsed.data.isPrimary,
+          sizeKb:       parsed.data.sizeKb,
         },
         select: { id: true },
       })
+
+      // Incrementa contadores da fazenda dentro da mesma transação
+      await incrementStorageCounters(tx, farmId, parsed.data.sizeKb)
+
+      return created
     })
 
     revalidatePath(`/animals/${parsed.data.animalId}`)
@@ -251,6 +277,73 @@ export async function addAnimalPhoto(
   } catch (error) {
     console.error('[addAnimalPhoto]', error)
     return { success: false, error: 'Erro ao adicionar foto.' }
+  }
+}
+
+// ─── Remover foto ──────────────────────────────────────────
+
+export async function deleteAnimalPhoto(
+  photoId: string,
+  farmId:  string,
+): Promise<ActionResult<void>> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado' }
+
+    await requireFarmAccess(session.user.id, farmId, 'MANAGER')
+
+    // Busca a foto verificando que o animal pertence à fazenda (anti-IDOR)
+    const photo = await prisma.animalPhoto.findFirst({
+      where: {
+        id:     photoId,
+        animal: { farmId },
+      },
+      select: {
+        id:          true,
+        url:         true,
+        thumbnailUrl: true,
+        sizeKb:      true,
+        animalId:    true,
+        isPrimary:   true,
+      },
+    })
+    if (!photo) return { success: false, error: 'Foto não encontrada' }
+
+    await prisma.$transaction(async (tx) => {
+      // Remove registro do banco
+      await tx.animalPhoto.delete({ where: { id: photoId } })
+
+      // Se era a foto primária, promove a mais recente das restantes
+      if (photo.isPrimary) {
+        const next = await tx.animalPhoto.findFirst({
+          where:   { animalId: photo.animalId },
+          orderBy: { takenAt: 'desc' },
+          select:  { id: true },
+        })
+        if (next) {
+          await tx.animalPhoto.update({
+            where: { id: next.id },
+            data:  { isPrimary: true },
+          })
+        }
+      }
+
+      // Decrementa contadores da fazenda
+      await decrementStorageCounters(tx, farmId, photo.sizeKb)
+    })
+
+    // Remove arquivos do blob em paralelo (fora da transação — sem rollback necessário)
+    await Promise.all([
+      deleteFile(photo.url),
+      photo.thumbnailUrl ? deleteFile(photo.thumbnailUrl) : Promise.resolve(),
+    ])
+
+    revalidatePath(`/animals/${photo.animalId}`)
+
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[deleteAnimalPhoto]', error)
+    return { success: false, error: 'Erro ao remover foto.' }
   }
 }
 

@@ -1,21 +1,20 @@
 import { Suspense } from 'react'
-import Link from 'next/link'
-import { auth } from '@/lib/auth'
+import Link         from 'next/link'
+import { auth }     from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import { Button } from '@/components/ui/button'
-import { Plus } from 'lucide-react'
+import { Button }   from '@/components/ui/button'
+import { Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { getAnimalsByFarm, getAnimalStats } from '@/modules/animals/queries'
 import { AnimalList }    from '@/modules/animals/components/animal-list'
 import { AnimalFilters } from '@/modules/animals/components/animal-filters'
 import { PageHeader }    from '@/components/shared/page-header'
 import { animalFiltersSchema } from '@/modules/animals/schema'
+import { cn } from '@/lib/utils'
 
-// ─── Metadata ──────────────────────────────────────────────
+export const metadata = { title: 'Animais | BovControl' }
 
-export const metadata = {
-  title: 'Animais | BovControl',
-}
+const PAGE_SIZE = 50
 
 // ─── Props ─────────────────────────────────────────────────
 
@@ -23,7 +22,7 @@ interface PageProps {
   searchParams: Promise<Record<string, string>>
 }
 
-// ─── Componente de stats inline ────────────────────────────
+// ─── Stats bar ─────────────────────────────────────────────
 
 async function AnimalStatsBar({ farmId }: { farmId: string }) {
   const stats = await getAnimalStats(farmId)
@@ -48,7 +47,70 @@ async function AnimalStatsBar({ farmId }: { farmId: string }) {
   )
 }
 
-// ─── Lista assíncrona ──────────────────────────────────────
+// ─── Paginação ─────────────────────────────────────────────
+
+function AnimalPagination({
+  page,
+  pageCount,
+  total,
+  searchParams,
+}: {
+  page:        number
+  pageCount:   number
+  total:       number
+  searchParams: Record<string, string>
+}) {
+  function buildUrl(p: number) {
+    const params = new URLSearchParams()
+    for (const [k, v] of Object.entries(searchParams)) {
+      if (k !== 'page' && v) params.set(k, v)
+    }
+    params.set('page', String(p))
+    return `/animals?${params.toString()}`
+  }
+
+  const from = (page - 1) * PAGE_SIZE + 1
+  const to   = Math.min(page * PAGE_SIZE, total)
+
+  return (
+    <div className="flex items-center justify-between pt-4 border-t border-border">
+      <p className="text-xs text-muted-foreground">
+        {from}–{to} de {total} animais
+      </p>
+      <div className="flex items-center gap-1">
+        {page > 1 ? (
+          <Link
+            href={buildUrl(page - 1)}
+            className={cn(
+              'inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium',
+              'border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors',
+            )}
+          >
+            <ChevronLeft className="size-3" />
+            Anterior
+          </Link>
+        ) : null}
+        <span className="px-2 text-xs text-muted-foreground">
+          {page}/{pageCount}
+        </span>
+        {page < pageCount ? (
+          <Link
+            href={buildUrl(page + 1)}
+            className={cn(
+              'inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium',
+              'border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors',
+            )}
+          >
+            Próxima
+            <ChevronRight className="size-3" />
+          </Link>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+// ─── Lista assíncrona com paginação ────────────────────────
 
 async function AnimalListAsync({
   farmId,
@@ -57,37 +119,47 @@ async function AnimalListAsync({
   farmId:       string
   searchParams: Record<string, string>
 }) {
-  // Valida e sanitiza os filtros dos search params
   const filters = animalFiltersSchema.parse({
-    search:   searchParams.search,
-    sex:      searchParams.sex,
-    category: searchParams.category,
-    status:   searchParams.status   ?? 'ACTIVE',
-    purpose:  searchParams.purpose,
-    lotId:    searchParams.lotId,
+    search:   searchParams['search'],
+    sex:      searchParams['sex'],
+    category: searchParams['category'],
+    status:   searchParams['status'] ?? 'ACTIVE',
+    purpose:  searchParams['purpose'],
+    lotId:    searchParams['lotId'],
   })
 
-  const animals = await getAnimalsByFarm(farmId, filters)
+  const page = Math.max(1, parseInt(searchParams['page'] ?? '1', 10) || 1)
+  const { items, total, pageCount, page: currentPage } =
+    await getAnimalsByFarm(farmId, filters, page, PAGE_SIZE)
 
   const isFiltered = Boolean(
-    searchParams.search ||
-    searchParams.sex    ||
-    searchParams.category,
+    searchParams['search'] ||
+    searchParams['sex']    ||
+    searchParams['category'],
   )
 
-  return <AnimalList animals={animals} isFiltered={isFiltered} />
+  return (
+    <>
+      <AnimalList animals={items} isFiltered={isFiltered} />
+      {pageCount > 1 && (
+        <AnimalPagination
+          page={currentPage}
+          pageCount={pageCount}
+          total={total}
+          searchParams={searchParams}
+        />
+      )}
+    </>
+  )
 }
 
-// ─── Skeleton da lista ─────────────────────────────────────
+// ─── Skeleton ──────────────────────────────────────────────
 
 function AnimalListSkeleton() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
       {Array.from({ length: 6 }).map((_, i) => (
-        <div
-          key={i}
-          className="h-[120px] rounded-xl bg-muted animate-pulse"
-        />
+        <div key={i} className="h-[120px] rounded-xl bg-muted animate-pulse" />
       ))}
     </div>
   )
@@ -99,8 +171,6 @@ export default async function AnimalsPage({ searchParams }: PageProps) {
   const session = await auth()
   if (!session) redirect('/login')
 
-  // TODO: pegar farmId da sessão quando multi-fazenda ativo
-  // Por ora, pega a primeira fazenda do usuário
   const { prisma } = await import('@/lib/prisma')
   const farmUser = await prisma.farmUser.findFirst({
     where:  { userId: session.user.id },
@@ -125,13 +195,9 @@ export default async function AnimalsPage({ searchParams }: PageProps) {
         }
       />
 
-      {/* Stats rápidas */}
       <AnimalStatsBar farmId={farmId} />
-
-      {/* Filtros */}
       <AnimalFilters />
 
-      {/* Lista com streaming */}
       <Suspense fallback={<AnimalListSkeleton />}>
         <AnimalListAsync farmId={farmId} searchParams={params} />
       </Suspense>

@@ -4,7 +4,9 @@ import Link from 'next/link'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-import { getAnimalById, getLotsForSelect } from '@/modules/animals/queries'
+import { getAnimalById, getLotsForSelect }         from '@/modules/animals/queries'
+import { getHealthEventsByAnimal }                 from '@/modules/health-events/queries'
+import { HealthEventTimeline }                     from '@/modules/health-events/components/health-event-timeline'
 import { AnimalQuickActions, AddPhotoButton }  from '@/modules/animals/components/animal-quick-actions'
 import { AnimalTimeline }      from '@/modules/animals/components/animal-timeline'
 import { SectionCard, InfoRow, InfoRows } from '@/components/shared/section-card'
@@ -68,9 +70,10 @@ export default async function AnimalDetailPage({
   const { farmId, role } = farmUser
 
   // Carrega dados em paralelo
-  const [animal, lots] = await Promise.all([
+  const [animal, lots, healthEvents] = await Promise.all([
     getAnimalById(id, farmId),
     getLotsForSelect(farmId),
+    getHealthEventsByAnimal(id, farmId, 10),
   ])
 
   if (!animal) notFound()
@@ -271,6 +274,18 @@ export default async function AnimalDetailPage({
         </SectionCard>
       )}
 
+      {/* Saúde */}
+      <SectionCard title="Eventos de Saúde" noPadding>
+        <div className="p-4">
+          <HealthEventTimeline
+            events={healthEvents}
+            animalId={animal.id}
+            farmId={farmId}
+            userId={session.user.id}
+          />
+        </div>
+      </SectionCard>
+
       {/* Timeline de fotos */}
       <SectionCard
         title="Linha do Tempo"
@@ -295,6 +310,8 @@ export default async function AnimalDetailPage({
               lotName:  animal.lot?.name ?? null,
             }}
             animalTag={animal.tag}
+            farmId={farmId}
+            canDelete={['OWNER', 'MANAGER'].includes(role)}
           />
         </div>
       </SectionCard>

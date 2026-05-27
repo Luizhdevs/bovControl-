@@ -3,20 +3,21 @@ import { Suspense }   from 'react'
 import { auth }       from '@/lib/auth'
 import { prisma }     from '@/lib/prisma'
 
-import { getMilkHistoryByFarm } from '@/modules/milk/queries'
-import { MilkFilters }          from '@/modules/milk/components/milk-filters'
-import { PageHeader }           from '@/components/shared/page-header'
-import { SectionCard }          from '@/components/shared/section-card'
-import { EmptyState }           from '@/components/shared/empty-state'
+import { getMilkHistoryByFarm, getMilkingSessionsByFarm } from '@/modules/milk/queries'
+import { PageHeader }    from '@/components/shared/page-header'
+import { SectionCard }   from '@/components/shared/section-card'
+import { EmptyState }    from '@/components/shared/empty-state'
 import { formatDate, formatLiters } from '@/lib/utils'
-import { MilkIcon, TrendingUp }  from 'lucide-react'
-import MilkHistoryLoading        from './loading'
+import { MILK_SHIFT_LABELS }  from '@/modules/shared/domain/animal-labels'
+import { SHIFT_EMOJIS }       from '@/modules/milk/constants'
+import { MilkIcon, TrendingUp } from 'lucide-react'
+import MilkHistoryLoading from './loading'
 
-// ─── Metadata ──────────────────────────────────────────────
+// ─── Metadata ──────────────────────────────────────────────────
 
 export const metadata = { title: 'Histórico de Leite | BovControl' }
 
-// ─── Gráfico de barras CSS ─────────────────────────────────
+// ─── Gráfico de barras CSS ─────────────────────────────────────
 
 function ProductionChart({
   data,
@@ -31,9 +32,9 @@ function ProductionChart({
     )
   }
 
-  const max      = Math.max(...data.map((d) => d.liters), 1)
-  const total    = data.reduce((s, d) => s + d.liters, 0)
-  const average  = total / data.length
+  const max     = Math.max(...data.map((d) => d.liters), 1)
+  const total   = data.reduce((s, d) => s + d.liters, 0)
+  const average = total / data.length
 
   return (
     <div className="space-y-3">
@@ -63,7 +64,7 @@ function ProductionChart({
       <div className="flex items-end gap-0.5 h-28 overflow-x-auto pb-1">
         {data.map((point) => {
           const height = max > 0 ? (point.liters / max) * 100 : 0
-          const label  = formatDate(point.date).slice(0, 5)  // dd/MM
+          const label  = formatDate(point.date).slice(0, 5)   // dd/MM
 
           return (
             <div
@@ -88,7 +89,7 @@ function ProductionChart({
   )
 }
 
-// ─── Inner async component (Suspense boundary) ─────────────
+// ─── Inner async component (Suspense boundary) ─────────────────
 
 async function HistoryContent({
   farmId,
@@ -97,9 +98,12 @@ async function HistoryContent({
   farmId: string
   days:   number
 }) {
-  const history = await getMilkHistoryByFarm(farmId, days)
+  const [history, sessions] = await Promise.all([
+    getMilkHistoryByFarm(farmId, days),
+    getMilkingSessionsByFarm(farmId, days),
+  ])
 
-  if (history.length === 0) {
+  if (sessions.length === 0) {
     return (
       <EmptyState
         icon={<MilkIcon />}
@@ -110,35 +114,37 @@ async function HistoryContent({
     )
   }
 
-  // Tabela de totais diários (mais recentes primeiro)
-  const sorted = [...history].sort((a, b) => b.date.localeCompare(a.date))
-
   return (
     <div className="space-y-4">
       {/* Gráfico */}
       <SectionCard
         title={`Produção — últimos ${days} dias`}
-        action={
-          <TrendingUp className="size-4 text-muted-foreground" />
-
-        }
+        action={<TrendingUp className="size-4 text-muted-foreground" />}
       >
         <ProductionChart data={history} />
       </SectionCard>
 
-      {/* Tabela diária */}
-      <SectionCard title="Detalhamento diário" noPadding>
+      {/* Tabela de sessões */}
+      <SectionCard title="Detalhamento por ordenha" noPadding>
         <div className="divide-y divide-border/50">
-          {sorted.map((row) => (
+          {sessions.map((s) => (
             <div
-              key={row.date}
-              className="flex items-center justify-between px-4 py-3"
+              key={s.id}
+              className="flex items-center gap-3 px-4 py-3"
             >
-              <span className="text-sm text-foreground">
-                {formatDate(row.date)}
+              <span className="text-base leading-none shrink-0">
+                {SHIFT_EMOJIS[s.shift]}
               </span>
-              <span className="text-sm font-bold tabular-nums text-cyan-400">
-                {formatLiters(row.liters)}
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium">
+                  {MILK_SHIFT_LABELS[s.shift]}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {formatDate(s.date)} · {s.milkingCows} vacas · {s.avgPerCow.toFixed(1)} L/vaca
+                </div>
+              </div>
+              <span className="text-sm font-bold tabular-nums text-cyan-400 shrink-0">
+                {formatLiters(s.totalLiters)}
               </span>
             </div>
           ))}
@@ -148,12 +154,12 @@ async function HistoryContent({
   )
 }
 
-// ─── Page ──────────────────────────────────────────────────
+// ─── Page ──────────────────────────────────────────────────────
 
 export default async function MilkHistoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ days?: string; shift?: string }>
+  searchParams: Promise<{ days?: string }>
 }) {
   const session = await auth()
   if (!session) redirect('/login')
@@ -174,8 +180,6 @@ export default async function MilkHistoryPage({
         title="Histórico de Produção"
         description="Evolução da ordenha"
       />
-
-      <MilkFilters />
 
       <Suspense fallback={<MilkHistoryLoading />}>
         <HistoryContent farmId={farmUser.farmId} days={days} />

@@ -34,30 +34,6 @@ function calcNextCheckDate(
   return null
 }
 
-/**
- * Cria alerta de PARTO PREVISTO no banco.
- * Chamado quando prenhez é CONFIRMADA.
- */
-async function createCalvingAlert(
-  farmId:   string,
-  animalId: string,
-  tag:      string,
-  dueDate:  Date,
-): Promise<void> {
-  await prisma.alert.create({
-    data: {
-      farmId,
-      animalId,
-      type:        'CALVING',
-      title:       `Parto previsto — ${tag}`,
-      description: 'Prenhez confirmada. Prepare o local de parição.',
-      priority:    'HIGH',
-      status:      'PENDING',
-      dueDate,
-    },
-  })
-}
-
 // ─── Registrar evento reprodutivo ──────────────────────────
 
 /**
@@ -98,25 +74,44 @@ export async function registerReproduction(
     const resolvedNextCheckDate =
       nextCheckDate ?? calcNextCheckDate(type, status, date)
 
-    const record = await prisma.reproduction.create({
-      data: {
-        animalId,
-        type,
-        date,
-        status,
-        bullName:      bullName ?? null,
-        nextCheckDate: resolvedNextCheckDate,
-        result:        result ?? null,
-        notes:         notes ?? null,
-      },
-      select: { id: true },
-    })
+    const shouldCreateAlert = type === 'PREGNANCY_CHECK' && status === 'CONFIRMED'
+    const calvingDate       = shouldCreateAlert
+      ? (resolvedNextCheckDate ?? addDays(date, 280))
+      : null
 
-    // Alerta automático de parto quando prenhez confirmada
-    if (type === 'PREGNANCY_CHECK' && status === 'CONFIRMED') {
-      const calvingDate = resolvedNextCheckDate ?? addDays(date, 280)
-      await createCalvingAlert(farmId, animal.id, animal.tag, calvingDate)
-    }
+    // $transaction garante atomicidade: registro + alerta criados juntos ou nenhum
+    const record = await prisma.$transaction(async (tx) => {
+      const created = await tx.reproduction.create({
+        data: {
+          animalId,
+          type,
+          date,
+          status,
+          bullName:      bullName ?? null,
+          nextCheckDate: resolvedNextCheckDate,
+          result:        result ?? null,
+          notes:         notes ?? null,
+        },
+        select: { id: true },
+      })
+
+      if (shouldCreateAlert && calvingDate) {
+        await tx.alert.create({
+          data: {
+            farmId,
+            animalId: animal.id,
+            type:        'CALVING',
+            title:       `Parto previsto — ${animal.tag}`,
+            description: 'Prenhez confirmada. Prepare o local de parição.',
+            priority:    'HIGH',
+            status:      'PENDING',
+            dueDate:     calvingDate,
+          },
+        })
+      }
+
+      return created
+    })
 
     revalidatePath('/reproduction')
     revalidatePath(`/reproduction/${animalId}`)
@@ -163,23 +158,39 @@ export async function updateReproductionStatus(
       parsed.data.nextCheckDate ??
       calcNextCheckDate(existing.type, parsed.data.status, existing.date)
 
-    await prisma.reproduction.update({
-      where: { id: parsed.data.recordId },
-      data: {
-        status:        parsed.data.status,
-        nextCheckDate: resolvedNextCheckDate,
-      },
-    })
-
-    // Cria alerta de parto se acabou de confirmar uma gestação
     const wasNotConfirmed  = existing.status !== 'CONFIRMED'
     const nowConfirmed     = parsed.data.status === 'CONFIRMED'
     const isPregnancyCheck = existing.type === 'PREGNANCY_CHECK'
+    const shouldAlert      = isPregnancyCheck && wasNotConfirmed && nowConfirmed
+    const calvingDate      = shouldAlert
+      ? (resolvedNextCheckDate ?? addDays(existing.date, 280))
+      : null
 
-    if (isPregnancyCheck && wasNotConfirmed && nowConfirmed) {
-      const calvingDate = resolvedNextCheckDate ?? addDays(existing.date, 280)
-      await createCalvingAlert(farmId, existing.animalId, existing.animal.tag, calvingDate)
-    }
+    // $transaction garante atomicidade: update + alerta criados juntos ou nenhum
+    await prisma.$transaction(async (tx) => {
+      await tx.reproduction.update({
+        where: { id: parsed.data.recordId },
+        data: {
+          status:        parsed.data.status,
+          nextCheckDate: resolvedNextCheckDate,
+        },
+      })
+
+      if (shouldAlert && calvingDate) {
+        await tx.alert.create({
+          data: {
+            farmId,
+            animalId: existing.animalId,
+            type:        'CALVING',
+            title:       `Parto previsto — ${existing.animal.tag}`,
+            description: 'Prenhez confirmada. Prepare o local de parição.',
+            priority:    'HIGH',
+            status:      'PENDING',
+            dueDate:     calvingDate,
+          },
+        })
+      }
+    })
 
     revalidatePath('/reproduction')
     revalidatePath(`/reproduction/${existing.animalId}`)

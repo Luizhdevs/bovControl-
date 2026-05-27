@@ -149,8 +149,9 @@ async function main() {
   // ── 3. Limpeza de dados existentes do farm ─────────────
   console.log('\n🧹  Limpando dados existentes...')
 
-  await prisma.milkRecord.deleteMany({ where: { farmId: farm.id } })
-  await prisma.alert.deleteMany({ where: { farmId: farm.id } })
+  await prisma.milkRecord.deleteMany(     { where: { farmId: farm.id } })
+  await prisma.milkingSession.deleteMany( { where: { farmId: farm.id } })
+  await prisma.alert.deleteMany({          where: { farmId: farm.id } })
 
   // Busca IDs para cascatear deletes das tabelas sem FK direta para farmId
   const existingIds = (await prisma.animal.findMany({
@@ -392,7 +393,56 @@ async function main() {
   for (let i = 0; i < milkBatch.length; i += MILK_CHUNK) {
     await prisma.milkRecord.createMany({ data: milkBatch.slice(i, i + MILK_CHUNK), skipDuplicates: true })
   }
-  console.log(`✅  Registros de leite: ${milkBatch.length}`)
+  console.log(`✅  Registros de leite (individuais): ${milkBatch.length}`)
+
+  // ── 7b. Sessões de ordenha agregadas (UI principal) ───
+  // Reflete a produção total da fazenda por turno.
+  // ~400–450 L manhã, ~280–320 L tarde, ~35–45 vacas ordenhadas.
+  console.log('\n⏳  Gerando sessões de ordenha (60 dias × 2 turnos)...')
+
+  const sessionBatch: Prisma.MilkingSessionCreateManyInput[] = []
+
+  for (let d = MILK_DAYS; d >= 0; d--) {
+    const date = startOfDay(subDays(NOW, d))
+    // Normaliza para meio-dia UTC (campo @db.Date evita ambiguidade de fuso)
+    date.setUTCHours(12, 0, 0, 0)
+
+    // Cows ordenhadas varia ±5 por dia (simulação de faltas/doentes)
+    const cowsMorning   = Math.round(rnd(38, 45, 0))
+    const cowsAfternoon = Math.round(rnd(32, 42, 0))
+
+    // Litros por turno — variação natural ±10%
+    const morningBase   = rnd(410, 450)
+    const afternoonBase = rnd(285, 315)
+
+    // Ocasionalmente não há ordenha (1% de chance por turno)
+    if (!maybe(0.01)) {
+      sessionBatch.push({
+        id:          randomUUID(),
+        farmId:      farm.id,
+        shift:       'MORNING',
+        date,
+        totalLiters: Math.round(morningBase   * 10) / 10,
+        milkingCows: cowsMorning,
+        notes:       null,
+      })
+    }
+
+    if (!maybe(0.01)) {
+      sessionBatch.push({
+        id:          randomUUID(),
+        farmId:      farm.id,
+        shift:       'AFTERNOON',
+        date,
+        totalLiters: Math.round(afternoonBase * 10) / 10,
+        milkingCows: cowsAfternoon,
+        notes:       null,
+      })
+    }
+  }
+
+  await prisma.milkingSession.createMany({ data: sessionBatch, skipDuplicates: true })
+  console.log(`✅  Sessões de ordenha: ${sessionBatch.length}`)
 
   // ── 8. Pesagens ───────────────────────────────────────
   console.log('\n⏳  Gerando pesagens...')
@@ -658,24 +708,100 @@ async function main() {
   await prisma.alert.createMany({ data: alertsBatch, skipDuplicates: true })
   console.log(`✅  Alertas: ${alertsBatch.length}`)
 
-  // ── 12. Sumário final ─────────────────────────────────
-  const [totAnimals, totMilk, totWeights, totHealth, totRepro, totAlerts] = await Promise.all([
+  // ── 12. Fotos (registros fake para testes de storage) ─
+  console.log('\n⏳  Gerando fotos de teste...')
+
+  // Seleciona até 40 animais variados para ter fotos
+  const photoAnimals = [
+    ...cows1.slice(0, 12),
+    ...cows2.slice(0, 8),
+    ...heifers1.slice(0, 8),
+    ...bulls.slice(0, 4),
+    ...calves.slice(0, 8),
+  ]
+
+  const photoBatch: Prisma.AnimalPhotoCreateManyInput[] = []
+  let totalPhotoSizeKb = 0
+
+  const CAPTIONS = [
+    'Pesagem trimestral',
+    'Após parto',
+    'Chegada na fazenda',
+    'Vacinação febre aftosa',
+    'Controle reprodutivo',
+    null,
+    null,
+    null,
+  ]
+
+  for (const animal of photoAnimals) {
+    // Cada animal terá 1-3 fotos
+    const numPhotos = rnd(1, 3, 0)
+    for (let pi = 0; pi < numPhotos; pi++) {
+      const photoId   = randomUUID()
+      const takenAt   = subDays(NOW, rnd(0, 180, 0))
+      // Imagens de placeholder do picsum — funcionam em dev para testar a UI
+      const seed      = Math.floor(Math.random() * 500)
+      const url       = `https://picsum.photos/seed/${photoId}/800/600`
+      const thumbUrl  = `https://picsum.photos/seed/${photoId}/300/225`
+      // Simula o tamanho pós-compressão: imagem 60-180 KB, thumb 10-25 KB
+      const imgKb    = rnd(60, 180, 0)
+      const thumbKb  = rnd(10, 25, 0)
+      const sizeKb   = imgKb + thumbKb
+
+      totalPhotoSizeKb += sizeKb
+
+      photoBatch.push({
+        id:           `photo_${photoId.replace(/-/g, '').slice(0, 20)}`,
+        animalId:     animal.id as string,
+        url,
+        thumbnailUrl: thumbUrl,
+        caption:      pick(CAPTIONS as (string | null)[]),
+        takenAt,
+        isPrimary:    pi === 0,   // Primeira foto de cada animal é primária
+        sizeKb,
+      })
+
+      // Suprime lint de 'seed' não usada
+      void seed
+    }
+  }
+
+  await prisma.animalPhoto.createMany({ data: photoBatch, skipDuplicates: true })
+
+  // Atualiza contadores de storage da fazenda para refletir os dados seed
+  const totalStorageMb = totalPhotoSizeKb / 1024
+  await prisma.farm.update({
+    where: { id: farm.id },
+    data: {
+      imageCount:    photoBatch.length,
+      storageUsedMb: totalStorageMb,
+    },
+  })
+  console.log(`✅  Fotos: ${photoBatch.length} (${totalStorageMb.toFixed(1)} MB simulados)`)
+
+  // ── 13. Sumário final ─────────────────────────────────
+  const [totAnimals, totMilk, totSessions, totWeights, totHealth, totRepro, totAlerts, totPhotos] = await Promise.all([
     prisma.animal.count({ where: { farmId: farm.id } }),
     prisma.milkRecord.count({ where: { farmId: farm.id } }),
+    prisma.milkingSession.count({ where: { farmId: farm.id } }),
     prisma.weightRecord.count({ where: { animal: { farmId: farm.id } } }),
     prisma.healthEvent.count({ where: { animal: { farmId: farm.id } } }),
     prisma.reproduction.count({ where: { animal: { farmId: farm.id } } }),
     prisma.alert.count({ where: { farmId: farm.id } }),
+    prisma.animalPhoto.count({ where: { animal: { farmId: farm.id } } }),
   ])
 
   console.log('\n🎉  Seed realístico concluído!')
   console.log('══════════════════════════════════════════')
   console.log(`🐄  Animais:              ${totAnimals}`)
-  console.log(`🥛  Registros de leite:   ${totMilk}`)
+  console.log(`🥛  Sessões de ordenha:   ${totSessions}`)
+  console.log(`🥛  Registros individuais:${totMilk}`)
   console.log(`⚖️   Pesagens:             ${totWeights}`)
   console.log(`💉  Eventos de saúde:     ${totHealth}`)
   console.log(`💕  Eventos reprodutivos: ${totRepro}`)
   console.log(`🔔  Alertas:              ${totAlerts}`)
+  console.log(`📸  Fotos:                ${totPhotos}`)
   console.log('──────────────────────────────────────────')
   console.log('📧  admin@saldanha.com.br        (OWNER)')
   console.log('📧  gerente@saldanha.com.br      (MANAGER)')

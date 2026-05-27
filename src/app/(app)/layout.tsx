@@ -1,9 +1,14 @@
-import { auth } from '@/lib/auth'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
+import { auth }                  from '@/lib/auth'
+import { redirect }              from 'next/navigation'
+import { prisma }                from '@/lib/prisma'
+import { getPendingAlertCount }  from '@/modules/alerts/queries'
+import { SyncProvider }          from '@/components/providers/sync-provider'
+import { SyncIndicator }         from '@/components/shared/sync-indicator'
+import Link                      from 'next/link'
 import {
   LayoutDashboard,
   PawPrint,
+  Activity,
   Layers2,
   MapPin,
   MilkIcon,
@@ -12,24 +17,37 @@ import {
   Settings,
   LogOut,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn }     from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { signOut } from '@/lib/auth'
 
+// ─── Nav items ────────────────────────────────────────────
+// Ordem importa: os primeiros 5 aparecem na bottom nav mobile.
+
 const NAV_ITEMS = [
-  { href: '/',              icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/animals',       icon: PawPrint,        label: 'Animais'   },
-  { href: '/lots',          icon: Layers2,         label: 'Lotes'     },
-  { href: '/pastures',      icon: MapPin,          label: 'Pastos'    },
-  { href: '/milk',          icon: MilkIcon,        label: 'Leite'     },
-  { href: '/reproduction',  icon: Heart,           label: 'Reprodução' },
-  { href: '/alerts',        icon: Bell,            label: 'Alertas'   },
-  { href: '/settings',      icon: Settings,        label: 'Config.'   },
-]
+  { href: '/',               icon: LayoutDashboard, label: 'Dashboard'  },
+  { href: '/animals',        icon: PawPrint,        label: 'Animais'    },
+  { href: '/milk',           icon: MilkIcon,        label: 'Leite'      },
+  { href: '/health-events',  icon: Activity,        label: 'Saúde'      },
+  { href: '/reproduction',   icon: Heart,           label: 'Reprodução' },
+  { href: '/lots',           icon: Layers2,         label: 'Lotes'      },
+  { href: '/pastures',       icon: MapPin,          label: 'Pastos'     },
+  { href: '/alerts',         icon: Bell,            label: 'Alertas', hasBadge: true },
+  { href: '/settings',       icon: Settings,        label: 'Config.'    },
+] as const
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
   if (!session) redirect('/login')
+
+  const farmUser = await prisma.farmUser.findFirst({
+    where:  { userId: session.user.id },
+    select: { farmId: true },
+  })
+
+  const alertCount = farmUser
+    ? await getPendingAlertCount(farmUser.farmId)
+    : 0
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -39,7 +57,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <span className="text-2xl">🐄</span>
           <span className="font-bold text-lg tracking-tight">BovControl</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {/* Indicador de sync offline */}
+          <SyncIndicator />
           <span className="text-xs text-muted-foreground hidden sm:block">
             {session.user.name}
           </span>
@@ -66,7 +86,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               )}
             >
               <item.icon className="size-4 shrink-0" />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {'hasBadge' in item && item.hasBadge && alertCount > 0 && (
+                <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold">
+                  {alertCount > 99 ? '99+' : alertCount}
+                </span>
+              )}
             </Link>
           ))}
         </aside>
@@ -79,7 +104,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </main>
       </div>
 
-      {/* Bottom nav mobile */}
+      {/* Bottom nav mobile — mostra os 5 primeiros itens */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-background/95 backdrop-blur-md">
         <div className="flex items-center justify-around px-2 py-2">
           {NAV_ITEMS.slice(0, 5).map((item) => (
@@ -88,12 +113,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               href={item.href}
               className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-colors min-w-[44px] min-h-[44px] justify-center"
             >
-              <item.icon className="size-5" />
+              <div className="relative">
+                <item.icon className="size-5" />
+                {'hasBadge' in item && item.hasBadge && alertCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex size-3.5 items-center justify-center rounded-full bg-destructive text-[8px] font-bold text-destructive-foreground">
+                    {alertCount > 9 ? '9+' : alertCount}
+                  </span>
+                )}
+              </div>
               <span className="text-[10px] font-medium">{item.label}</span>
             </Link>
           ))}
         </div>
       </nav>
+
+      {/* SyncProvider — gerencia sync offline sem renderizar nada visível */}
+      <SyncProvider />
     </div>
   )
 }

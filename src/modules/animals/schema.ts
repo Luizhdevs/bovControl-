@@ -81,11 +81,13 @@ export type TransferLotInput = z.infer<typeof transferLotSchema>
 // ─── Upload de foto ────────────────────────────────────────
 
 export const addPhotoSchema = z.object({
-  animalId:  z.string().cuid('ID inválido'),
-  url:       z.string().url('URL inválida'),
-  caption:   z.string().max(200).optional().nullable(),
-  takenAt:   z.coerce.date().default(() => new Date()),
-  isPrimary: z.boolean().default(false),
+  animalId:     z.string().cuid('ID inválido'),
+  url:          z.string().url('URL inválida'),
+  thumbnailUrl: z.string().url('URL inválida').optional().nullable(),
+  caption:      z.string().max(200).optional().nullable(),
+  takenAt:      z.coerce.date().default(() => new Date()),
+  isPrimary:    z.boolean().default(false),
+  sizeKb:       z.number().int().min(0).default(0),
 })
 
 export type AddPhotoInput = z.infer<typeof addPhotoSchema>

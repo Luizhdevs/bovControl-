@@ -5,28 +5,23 @@ import { auth }        from '@/lib/auth'
 import { prisma }      from '@/lib/prisma'
 import { History }     from 'lucide-react'
 
-import { getDailyMilkSummary, getAnimalsForMilkRegister } from '@/modules/milk/queries'
-import { MilkDailySummary }  from '@/modules/milk/components/milk-daily-summary'
-import { MilkRanking }       from '@/modules/milk/components/milk-ranking'
-import { MilkQuickRegister } from '@/modules/milk/components/milk-quick-register'
-import { PageHeader }        from '@/components/shared/page-header'
-import { SectionCard }       from '@/components/shared/section-card'
-import { formatDate }        from '@/lib/utils'
-import MilkLoading           from './loading'
+import { getDailyMilkSummary }   from '@/modules/milk/queries'
+import { MilkDailySummary }      from '@/modules/milk/components/milk-daily-summary'
+import { MilkQuickRegister }     from '@/modules/milk/components/milk-quick-register'
+import { PageHeader }            from '@/components/shared/page-header'
+import { SectionCard }           from '@/components/shared/section-card'
+import { formatDate }            from '@/lib/utils'
+import MilkLoading               from './loading'
 
-// ─── Metadata ──────────────────────────────────────────────
+// ─── Metadata ──────────────────────────────────────────────────
 
 export const metadata = { title: 'Produção de Leite | BovControl' }
 
-// ─── Inner async component (Suspense boundary) ─────────────
+// ─── Inner async component (Suspense boundary) ─────────────────
 
 async function MilkDashboardContent({ farmId }: { farmId: string }) {
-  const [summary, animals] = await Promise.all([
-    getDailyMilkSummary(farmId),
-    getAnimalsForMilkRegister(farmId),
-  ])
-
-  const today = formatDate(summary.date)
+  const summary = await getDailyMilkSummary(farmId)
+  const today   = formatDate(summary.date)
 
   return (
     <div className="space-y-4">
@@ -49,17 +44,7 @@ async function MilkDashboardContent({ farmId }: { farmId: string }) {
       </SectionCard>
 
       {/* Registro rápido */}
-      <MilkQuickRegister farmId={farmId} animals={animals} />
-
-      {/* Ranking do dia */}
-      {summary.topAnimals.length > 0 && (
-        <SectionCard
-          title="Top produtoras hoje"
-          subtitle={`${summary.animalCount} ${summary.animalCount === 1 ? 'animal' : 'animais'}`}
-        >
-          <MilkRanking topAnimals={summary.topAnimals} />
-        </SectionCard>
-      )}
+      <MilkQuickRegister farmId={farmId} />
 
       {/* Links de ação */}
       <div className="grid grid-cols-2 gap-3">
@@ -82,7 +67,7 @@ async function MilkDashboardContent({ farmId }: { farmId: string }) {
   )
 }
 
-// ─── Page ──────────────────────────────────────────────────
+// ─── Page ──────────────────────────────────────────────────────
 
 export default async function MilkPage() {
   const session = await auth()

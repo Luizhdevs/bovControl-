@@ -368,8 +368,8 @@ function PhotoSheet({
   const { toast }             = useToast()
 
   // Espelha as restrições do /api/upload — feedback imediato antes do request
-  const ALLOWED_TYPES  = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic']
-  const MAX_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
+  const ALLOWED_TYPES  = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
+  const MAX_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB
 
   function handleUpload() {
     const file = fileRef.current?.files?.[0]
@@ -390,7 +390,7 @@ function PhotoSheet({
     if (file.size > MAX_SIZE_BYTES) {
       toast({
         title:       'Arquivo muito grande',
-        description: 'Máximo de 10 MB por foto.',
+        description: 'Máximo de 5 MB por foto.',
         variant:     'destructive',
       })
       return
@@ -400,10 +400,16 @@ function PhotoSheet({
       try {
         // Envia o arquivo para /api/upload via FormData
         const form = new FormData()
-        form.append('file', file)
+        form.append('file',     file)
+        form.append('animalId', animalId)   // validação de posse no servidor
 
         const response = await fetch('/api/upload', { method: 'POST', body: form })
-        const data     = (await response.json()) as { url?: string; error?: string }
+        const data = (await response.json()) as {
+          url?:          string
+          thumbnailUrl?: string
+          sizeKb?:       number
+          error?:        string
+        }
 
         if (!response.ok || !data.url) {
           toast({
@@ -414,11 +420,13 @@ function PhotoSheet({
           return
         }
 
-        // Persiste a URL no banco via Server Action
+        // Persiste as URLs e metadados no banco via Server Action
         const result = await addAnimalPhoto(farmId, {
           animalId,
-          url:     data.url,
-          caption: caption || null,
+          url:          data.url,
+          thumbnailUrl: data.thumbnailUrl ?? null,
+          sizeKb:       data.sizeKb ?? 0,
+          caption:      caption || null,
         })
 
         if (!result.success) {

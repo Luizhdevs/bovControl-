@@ -15,7 +15,9 @@
     "db:seed:dev": "tsx prisma/seed-dev.ts",
     "db:reset": "prisma migrate reset --force",
     "db:reset:dev": "tsx scripts/reset-dev.ts",
-    "db:fresh:dev": "npm run db:push && npm run db:seed && npm run db:seed:dev"
+    "db:fresh:dev": "npm run db:push && npm run db:seed && npm run db:seed:dev",
+    "storage:audit": "tsx scripts/storage-audit.ts",
+    "storage:fix": "tsx scripts/storage-audit.ts --fix"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.4",

@@ -1,19 +1,21 @@
 import { prisma } from '@/lib/prisma'
+import { subDays } from 'date-fns'
 import type { AnimalFiltersInput } from './schema'
 import type {
   AnimalListItem,
+  AnimalPage,
   AnimalWithRelations,
   AnimalSelectOption,
   AnimalStats,
   LotSelectOption,
 } from './types'
 
-// ─── Listagem ──────────────────────────────────────────────
+// ─── Builder de where clause ──────────────────────────────
 
-export async function getAnimalsByFarm(
+function buildAnimalWhere(
   farmId:  string,
-  filters: Partial<AnimalFiltersInput> = {},
-): Promise<AnimalListItem[]> {
+  filters: Partial<AnimalFiltersInput>,
+) {
   const {
     search,
     sex,
@@ -23,50 +25,77 @@ export async function getAnimalsByFarm(
     lotId,
   } = filters
 
-  const animals = await prisma.animal.findMany({
-    where: {
-      farmId,
-      status,
-      ...(sex      && { sex }),
-      ...(category && { category }),
-      ...(purpose  && { purpose }),
-      ...(lotId    && { lotId }),
-      ...(search   && {
-        OR: [
-          { tag:  { contains: search, mode: 'insensitive' } },
-          { name: { contains: search, mode: 'insensitive' } },
-        ],
-      }),
-    },
-    select: {
-      id:        true,
-      tag:       true,
-      name:      true,
-      sex:       true,
-      category:  true,
-      status:    true,
-      purpose:   true,
-      breed:     true,
-      birthDate: true,
-      lot: {
-        select: { id: true, name: true, type: true },
-      },
-      photos: {
-        where:  { isPrimary: true },
-        select: { url: true },
-        take:   1,
-      },
-      _count: {
-        select: { photos: true },
-      },
-    },
-    orderBy: [{ category: 'asc' }, { tag: 'asc' }],
-  })
+  return {
+    farmId,
+    status,
+    ...(sex      && { sex }),
+    ...(category && { category }),
+    ...(purpose  && { purpose }),
+    ...(lotId    && { lotId }),
+    ...(search   && {
+      OR: [
+        { tag:  { contains: search, mode: 'insensitive' as const } },
+        { name: { contains: search, mode: 'insensitive' as const } },
+      ],
+    }),
+  }
+}
 
-  return animals.map((a) => ({
-    ...a,
-    primaryPhoto: a.photos[0] ?? null,
-  }))
+const ANIMAL_LIST_SELECT = {
+  id:        true,
+  tag:       true,
+  name:      true,
+  sex:       true,
+  category:  true,
+  status:    true,
+  purpose:   true,
+  breed:     true,
+  birthDate: true,
+  lot: {
+    select: { id: true, name: true, type: true },
+  },
+  photos: {
+    where:  { isPrimary: true },
+    select: { url: true },
+    take:   1,
+  },
+  _count: {
+    select: { photos: true },
+  },
+}
+
+// ─── Listagem paginada ────────────────────────────────────
+
+/**
+ * Retorna página de animais + total em 2 queries paralelas.
+ * Padrão: 50 animais por página, page = 1.
+ */
+export async function getAnimalsByFarm(
+  farmId:   string,
+  filters:  Partial<AnimalFiltersInput> = {},
+  page      = 1,
+  pageSize  = 50,
+): Promise<AnimalPage> {
+  const where = buildAnimalWhere(farmId, filters)
+  const skip  = (page - 1) * pageSize
+
+  const [animals, total] = await Promise.all([
+    prisma.animal.findMany({
+      where,
+      select:  ANIMAL_LIST_SELECT,
+      orderBy: [{ category: 'asc' }, { tag: 'asc' }],
+      skip,
+      take:    pageSize,
+    }),
+    prisma.animal.count({ where }),
+  ])
+
+  return {
+    items:     animals.map((a) => ({ ...a, primaryPhoto: a.photos[0] ?? null })),
+    total,
+    page,
+    pageCount: Math.max(1, Math.ceil(total / pageSize)),
+  }
 }
 
 // ─── Detalhes ──────────────────────────────────────────────
@@ -160,4 +189,46 @@ export async function getAnimalStats(farmId: string): Promise<AnimalStats> {
     bulls:   countOf('BULL'),
     steers:  countOf('STEER'),
   }
+}
+
+// ─── Animais recém adicionados ────────────────────────────
+
+export async function getRecentAnimalsCount(
+  farmId: string,
+  days    = 7,
+): Promise<number> {
+  return prisma.animal.count({
+    where: {
+      farmId,
+      status:    'ACTIVE',
+      createdAt: { gte: subDays(new Date(), days) },
+    },
+  })
+}
+
+// ─── Geração de tag ───────────────────────────────────────
+
+/**
+ * Gera o próximo tag disponível para a fazenda (formato BOV-XXXX).
+ *
+ * Busca apenas o tag mais alto (1 linha) em vez de carregar todos.
+ * Tags seguem BOV-NNNN (padding fixo de 4 dígitos), portanto
+ * ordenação lexicográfica = ordenação numérica para até 9999 animais.
+ *
+ * Nota: sujeito a race condition em cadastros simultâneos de alta
+ * frequência. Para produção com muitos usuários, usar sequência
+ * PostgreSQL por fazenda (nextval).
+ */
+export async function generateAnimalTag(farmId: string): Promise<string> {
+  const latest = await prisma.animal.findFirst({
+    where:   { farmId },
+    select:  { tag: true },
+    orderBy: { tag: 'desc' },
+  })
+
+  const maxNum = latest
+    ? (parseInt(latest.tag.match(/(\d+)$/)?.[1] ?? '0', 10) || 0)
+    : 0
+
+  return `BOV-${String(maxNum + 1).padStart(4, '0')}`
 }
