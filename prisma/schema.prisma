@@ -19,10 +19,11 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts     Account[]
-  sessions     Session[]
-  farmUsers    FarmUser[]
-  sentInvites  Invite[]   @relation("InviteCreator")
+  accounts        Account[]
+  sessions        Session[]
+  farmUsers       FarmUser[]
+  sentInvites     Invite[]       @relation("InviteCreator")
+  feedSessions    FeedSession[]  @relation("FeedCreator")
 
   @@map("users")
 }
@@ -90,6 +91,8 @@ model Farm {
   alerts           Alert[]
   invites          Invite[]
   milkingSessions  MilkingSession[]
+  feedTypes        FeedType[]
+  feedSessions     FeedSession[]
 
   @@map("farms")
 }
@@ -141,12 +144,17 @@ model Animal {
   father           Animal?      @relation("Father", fields: [fatherId], references: [id])
   paternalChildren Animal[]     @relation("Father")
 
-  photos         AnimalPhoto[]
-  weightRecords  WeightRecord[]
-  healthEvents   HealthEvent[]
-  milkRecords    MilkRecord[]
-  reproductions  Reproduction[]
-  alerts         Alert[]
+  // Acumuladores de ração — atualizados em $transaction em cada FeedSession
+  totalFeedConsumedKg Float @default(0)
+  estimatedFeedCost   Float @default(0)
+
+  photos           AnimalPhoto[]
+  weightRecords    WeightRecord[]
+  healthEvents     HealthEvent[]
+  milkRecords      MilkRecord[]
+  reproductions    Reproduction[]
+  alerts           Alert[]
+  feedConsumptions AnimalFeedConsumption[]
 
   @@unique([farmId, tag])
   @@index([farmId, status])
@@ -222,6 +230,7 @@ model Lot {
   farm    Farm     @relation(fields: [farmId], references: [id])
   pasture Pasture? @relation(fields: [pastureId], references: [id])
   animals Animal[]
+  feedSessions FeedSession[]
 
   @@unique([farmId, name])
   @@map("lots")
@@ -310,6 +319,71 @@ model MilkingSession {
   @@unique([farmId, shift, date])
   @@index([farmId, date])
   @@map("milking_sessions")
+}
+
+// ─── NUTRIÇÃO / RAÇÃO ─────────────────────────────────────
+
+model FeedType {
+  id             String   @id @default(cuid())
+  farmId         String
+  name           String
+  brand          String?
+  weightPerBagKg Float
+  pricePerBag    Float
+  proteinPercent Float?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  farm         Farm          @relation(fields: [farmId], references: [id])
+  feedSessions FeedSession[]
+
+  @@index([farmId, active])
+  @@map("feed_types")
+}
+
+// Uma FeedSession = 1 evento de alimentação de um lote inteiro.
+// animalCount é snapshot do momento do registro — preserva histórico.
+
+model FeedSession {
+  id                   String   @id @default(cuid())
+  farmId               String
+  lotId                String
+  feedTypeId           String
+  date                 DateTime @db.Date
+  bagCount             Int
+  totalWeightKg        Float
+  totalCost            Float
+  animalCount          Int
+  averageKgPerAnimal   Float
+  averageCostPerAnimal Float
+  notes                String?
+  createdById          String
+  createdAt            DateTime @default(now())
+
+  farm         Farm                    @relation(fields: [farmId], references: [id])
+  lot          Lot                     @relation(fields: [lotId], references: [id])
+  feedType     FeedType                @relation(fields: [feedTypeId], references: [id])
+  createdBy    User                    @relation("FeedCreator", fields: [createdById], references: [id])
+  consumptions AnimalFeedConsumption[]
+
+  @@index([farmId, date])
+  @@index([lotId, date])
+  @@map("feed_sessions")
+}
+
+model AnimalFeedConsumption {
+  id            String   @id @default(cuid())
+  animalId      String
+  feedSessionId String
+  consumedKg    Float
+  estimatedCost Float
+  createdAt     DateTime @default(now())
+
+  animal      Animal      @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  feedSession FeedSession @relation(fields: [feedSessionId], references: [id], onDelete: Cascade)
+
+  @@index([animalId, createdAt])
+  @@map("animal_feed_consumptions")
 }
 
 // ─── CONVITES ──────────────────────────────────────────────

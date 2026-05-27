@@ -3,10 +3,11 @@ import { redirect }            from 'next/navigation'
 import { prisma }              from '@/lib/prisma'
 import { getAnimalStats, getRecentAnimalsCount } from '@/modules/animals/queries'
 import { getDashboardMilkData, getWeeklyProduction } from '@/modules/milk/queries'
+import { getDashboardFeedData } from '@/modules/feed/queries'
 import { getPendingAlertCount } from '@/modules/alerts/queries'
 import { getPregnantAnimals }   from '@/modules/reproduction/queries'
 import { PageHeader }           from '@/components/shared/page-header'
-import { formatLiters }         from '@/lib/utils'
+import { formatLiters, formatCurrency } from '@/lib/utils'
 import {
   PawPrint,
   MilkIcon,
@@ -20,6 +21,7 @@ import {
   Sparkles,
   Activity,
   BarChart3,
+  Wheat,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -91,6 +93,7 @@ export default async function DashboardPage() {
   const [
     stats,
     milkData,
+    feedData,
     pendingAlerts,
     pregnantAnimals,
     recentCount,
@@ -98,6 +101,7 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     getAnimalStats(farmId),
     getDashboardMilkData(farmId),
+    getDashboardFeedData(farmId),
     getPendingAlertCount(farmId),
     getPregnantAnimals(farmId, 3),
     getRecentAnimalsCount(farmId, 7),
@@ -303,6 +307,41 @@ export default async function DashboardPage() {
         </div>
       </div>
 
+      {/* ── Alimentação ────────────────────────────────────── */}
+      <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Alimentação</h2>
+          <Link href="/feed" className="text-xs text-primary hover:underline">Ver histórico</Link>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-lg bg-muted/50 p-3">
+            <p className="text-xs text-muted-foreground">Hoje</p>
+            <p className="text-lg font-bold tabular-nums mt-0.5">{feedData.todayKg.toFixed(0)} kg</p>
+            <p className="text-[11px] text-muted-foreground">{formatCurrency(feedData.todayCost)}</p>
+          </div>
+          <div className="rounded-lg bg-muted/50 p-3">
+            <p className="text-xs text-muted-foreground">Esta semana</p>
+            <p className="text-lg font-bold tabular-nums mt-0.5">{feedData.weeklyKg.toFixed(0)} kg</p>
+            <p className="text-[11px] text-muted-foreground">{formatCurrency(feedData.weeklyCost)}</p>
+          </div>
+          {feedData.costPerLiter != null && (
+            <div className="rounded-lg bg-muted/50 p-3 col-span-2">
+              <p className="text-xs text-muted-foreground">Custo alimentar / litro de leite</p>
+              <p className="text-lg font-bold tabular-nums mt-0.5">{formatCurrency(feedData.costPerLiter)}/L</p>
+            </div>
+          )}
+        </div>
+
+        <Link
+          href="/feed/new"
+          className="flex items-center justify-center gap-2 w-full rounded-lg border border-dashed border-amber-500/30 py-2.5 text-sm font-medium text-amber-500 hover:bg-amber-500/5 transition-colors"
+        >
+          <Plus className="size-4" />
+          Registrar Alimentação
+        </Link>
+      </div>
+
       {/* ── Ações Rápidas ──────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
         <Link
@@ -332,11 +371,11 @@ export default async function DashboardPage() {
           )}
         </Link>
         <Link
-          href="/milk"
-          className="rounded-xl border border-dashed border-cyan-500/30 p-4 flex flex-col items-center gap-2 text-cyan-400 hover:bg-cyan-500/5 transition-colors"
+          href="/feed/new"
+          className="rounded-xl border border-dashed border-amber-600/30 p-4 flex flex-col items-center gap-2 text-amber-600 hover:bg-amber-600/5 transition-colors"
         >
-          <MilkIcon className="size-6" />
-          <span className="text-sm font-medium">Produção</span>
+          <Wheat className="size-6" />
+          <span className="text-sm font-medium">Ração</span>
         </Link>
       </div>
     </div>

@@ -16,6 +16,7 @@ import {
   Bell,
   Settings,
   LogOut,
+  Wheat,
 } from 'lucide-react'
 import { cn }     from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -28,10 +29,12 @@ const NAV_ITEMS = [
   { href: '/',               icon: LayoutDashboard, label: 'Dashboard'  },
   { href: '/animals',        icon: PawPrint,        label: 'Animais'    },
   { href: '/milk',           icon: MilkIcon,        label: 'Leite'      },
+  { href: '/feed',           icon: Wheat,           label: 'Ração'      },
   { href: '/health-events',  icon: Activity,        label: 'Saúde'      },
   { href: '/reproduction',   icon: Heart,           label: 'Reprodução' },
   { href: '/lots',           icon: Layers2,         label: 'Lotes'      },
   { href: '/pastures',       icon: MapPin,          label: 'Pastos'     },
+  { href: '/feed-types',     icon: Wheat,           label: 'Rações'     },
   { href: '/alerts',         icon: Bell,            label: 'Alertas', hasBadge: true },
   { href: '/settings',       icon: Settings,        label: 'Config.'    },
 ] as const

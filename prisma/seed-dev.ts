@@ -152,6 +152,8 @@ async function main() {
   await prisma.milkRecord.deleteMany(     { where: { farmId: farm.id } })
   await prisma.milkingSession.deleteMany( { where: { farmId: farm.id } })
   await prisma.alert.deleteMany({          where: { farmId: farm.id } })
+  await prisma.feedSession.deleteMany({   where: { farmId: farm.id } })  // cascade → AnimalFeedConsumption
+  await prisma.feedType.deleteMany({      where: { farmId: farm.id } })
 
   // Busca IDs para cascatear deletes das tabelas sem FK direta para farmId
   const existingIds = (await prisma.animal.findMany({
@@ -780,8 +782,147 @@ async function main() {
   })
   console.log(`✅  Fotos: ${photoBatch.length} (${totalStorageMb.toFixed(1)} MB simulados)`)
 
-  // ── 13. Sumário final ─────────────────────────────────
-  const [totAnimals, totMilk, totSessions, totWeights, totHealth, totRepro, totAlerts, totPhotos] = await Promise.all([
+  // ── 13. Tipos de ração ────────────────────────────────
+  console.log('\n⏳  Gerando tipos de ração...')
+
+  type FeedTypeSeed = {
+    id: string; farmId: string; name: string; brand: string | null
+    weightPerBagKg: number; pricePerBag: number; proteinPercent: number | null; active: boolean
+  }
+  const feedTypeData: FeedTypeSeed[] = [
+    {
+      id: 'ft_lactacao', farmId: farm.id,
+      name: 'Ração Lactação', brand: 'Nutrimilho',
+      weightPerBagKg: 30, pricePerBag: 92.50, proteinPercent: 22, active: true,
+    },
+    {
+      id: 'ft_crescimento', farmId: farm.id,
+      name: 'Ração Crescimento', brand: 'BovMix',
+      weightPerBagKg: 30, pricePerBag: 78.00, proteinPercent: 18, active: true,
+    },
+    {
+      id: 'ft_confinamento', farmId: farm.id,
+      name: 'Confinamento Intensivo', brand: 'AgroNutri',
+      weightPerBagKg: 40, pricePerBag: 115.00, proteinPercent: 15, active: true,
+    },
+    {
+      id: 'ft_mineral', farmId: farm.id,
+      name: 'Suplemento Mineral', brand: null,
+      weightPerBagKg: 25, pricePerBag: 145.00, proteinPercent: null, active: true,
+    },
+  ]
+  await prisma.feedType.createMany({ data: feedTypeData, skipDuplicates: true })
+  console.log(`✅  Tipos de ração: ${feedTypeData.length}`)
+
+  // ── 14. Sessões de alimentação (90 dias) ──────────────
+  console.log('\n⏳  Gerando histórico de alimentação (90 dias)...')
+
+  const ft_lac  = feedTypeData[0]!
+  const ft_cre  = feedTypeData[1]!
+  const ft_conf = feedTypeData[2]!
+  const ft_min  = feedTypeData[3]!
+
+  // Mapa lote → [animalIds, feedType principal, bags por sessão]
+  const lotFeedConfig = [
+    { lot: lotLeite1!, animals: cows1,    ft: ft_lac,  bagsMin: 6, bagsMax: 10, freqDays: 1 },
+    { lot: lotLeite2!, animals: cows2,    ft: ft_lac,  bagsMin: 5, bagsMax:  9, freqDays: 1 },
+    { lot: lotSeco!,   animals: dryCows,  ft: ft_min,  bagsMin: 2, bagsMax:  4, freqDays: 2 },
+    { lot: lotNov1!,   animals: heifers1, ft: ft_cre,  bagsMin: 3, bagsMax:  6, freqDays: 1 },
+    { lot: lotNov2!,   animals: heifers2, ft: ft_cre,  bagsMin: 3, bagsMax:  5, freqDays: 2 },
+  ]
+
+  const feedSessionBatch: Prisma.FeedSessionCreateManyInput[] = []
+  const consumptionBatch: Prisma.AnimalFeedConsumptionCreateManyInput[] = []
+
+  // Acumuladores para atualizar animal ao final
+  const animalFeedKg   = new Map<string, number>()
+  const animalFeedCost = new Map<string, number>()
+
+  for (const cfg of lotFeedConfig) {
+    const activeAnimalIds = cfg.animals
+      .filter(a => (a.status ?? 'ACTIVE') === 'ACTIVE')
+      .map(a => a.id as string)
+
+    if (activeAnimalIds.length === 0) continue
+
+    for (let day = 0; day < 90; day++) {
+      if (day % cfg.freqDays !== 0) continue
+
+      const sessionDate = startOfDay(subDays(NOW, day))
+      sessionDate.setUTCHours(12, 0, 0, 0)
+
+      const bags         = rnd(cfg.bagsMin, cfg.bagsMax, 0)
+      const totalKg      = bags * cfg.ft.weightPerBagKg
+      const totalCost    = bags * cfg.ft.pricePerBag * (0.9 + Math.random() * 0.2) // ±10% variação de preço
+      const animalCount  = activeAnimalIds.length
+      const kgPerAnimal  = totalKg  / animalCount
+      const costPerAnimal = totalCost / animalCount
+
+      const sessionId = randomUUID()
+
+      feedSessionBatch.push({
+        id:                   sessionId,
+        farmId:               farm.id,
+        lotId:                cfg.lot.id,
+        feedTypeId:           cfg.ft.id,
+        date:                 sessionDate,
+        bagCount:             bags,
+        totalWeightKg:        totalKg,
+        totalCost:            parseFloat(totalCost.toFixed(2)),
+        animalCount,
+        averageKgPerAnimal:   kgPerAnimal,
+        averageCostPerAnimal: parseFloat(costPerAnimal.toFixed(4)),
+        createdById:          uAdmin.id,
+      })
+
+      for (const animalId of activeAnimalIds) {
+        consumptionBatch.push({
+          animalId,
+          feedSessionId: sessionId,
+          consumedKg:    kgPerAnimal,
+          estimatedCost: parseFloat(costPerAnimal.toFixed(4)),
+        })
+        animalFeedKg.set(animalId,   (animalFeedKg.get(animalId)   ?? 0) + kgPerAnimal)
+        animalFeedCost.set(animalId, (animalFeedCost.get(animalId) ?? 0) + costPerAnimal)
+      }
+    }
+  }
+
+  // Insere em lotes para não estourar limites de SQL
+  const BATCH = 500
+  for (let i = 0; i < feedSessionBatch.length; i += BATCH) {
+    await prisma.feedSession.createMany({
+      data: feedSessionBatch.slice(i, i + BATCH),
+      skipDuplicates: true,
+    })
+  }
+  for (let i = 0; i < consumptionBatch.length; i += BATCH) {
+    await prisma.animalFeedConsumption.createMany({
+      data: consumptionBatch.slice(i, i + BATCH),
+      skipDuplicates: true,
+    })
+  }
+
+  // Atualiza acumuladores nos animais via SQL para performance
+  await prisma.$executeRaw`
+    UPDATE animals a
+    SET
+      "totalFeedConsumedKg" = agg.kg,
+      "estimatedFeedCost"   = agg.cost
+    FROM (
+      SELECT "animalId", SUM("consumedKg") AS kg, SUM("estimatedCost") AS cost
+      FROM animal_feed_consumptions afc
+      JOIN feed_sessions fs ON fs.id = afc."feedSessionId"
+      WHERE fs."farmId" = ${farm.id}
+      GROUP BY "animalId"
+    ) agg
+    WHERE a.id = agg."animalId"
+  `
+
+  console.log(`✅  Sessões de alimentação: ${feedSessionBatch.length} (${consumptionBatch.length} consumos individuais)`)
+
+  // ── 15. Sumário final ─────────────────────────────────
+  const [totAnimals, totMilk, totSessions, totWeights, totHealth, totRepro, totAlerts, totPhotos, totFeedSessions] = await Promise.all([
     prisma.animal.count({ where: { farmId: farm.id } }),
     prisma.milkRecord.count({ where: { farmId: farm.id } }),
     prisma.milkingSession.count({ where: { farmId: farm.id } }),
@@ -790,6 +931,7 @@ async function main() {
     prisma.reproduction.count({ where: { animal: { farmId: farm.id } } }),
     prisma.alert.count({ where: { farmId: farm.id } }),
     prisma.animalPhoto.count({ where: { animal: { farmId: farm.id } } }),
+    prisma.feedSession.count({ where: { farmId: farm.id } }),
   ])
 
   console.log('\n🎉  Seed realístico concluído!')
@@ -802,6 +944,7 @@ async function main() {
   console.log(`💕  Eventos reprodutivos: ${totRepro}`)
   console.log(`🔔  Alertas:              ${totAlerts}`)
   console.log(`📸  Fotos:                ${totPhotos}`)
+  console.log(`🌾  Sessões de ração:     ${totFeedSessions}`)
   console.log('──────────────────────────────────────────')
   console.log('📧  admin@saldanha.com.br        (OWNER)')
   console.log('📧  gerente@saldanha.com.br      (MANAGER)')

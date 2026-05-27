@@ -6,6 +6,8 @@ import { prisma } from '@/lib/prisma'
 
 import { getAnimalById, getLotsForSelect }         from '@/modules/animals/queries'
 import { getHealthEventsByAnimal }                 from '@/modules/health-events/queries'
+import { getAnimalFeedHistory }                    from '@/modules/feed/queries'
+import { AnimalFeedSection }                       from '@/modules/feed/components/animal-feed-section'
 import { HealthEventTimeline }                     from '@/modules/health-events/components/health-event-timeline'
 import { AnimalQuickActions, AddPhotoButton }  from '@/modules/animals/components/animal-quick-actions'
 import { AnimalTimeline }      from '@/modules/animals/components/animal-timeline'
@@ -22,7 +24,7 @@ import {
   BIRTH_TYPE_LABELS,
   LOT_TYPE_LABELS,
 } from '@/lib/utils'
-import { Scale, MilkIcon, Heart, Camera } from 'lucide-react'
+import { Scale, MilkIcon, Heart, Camera, Wheat } from 'lucide-react'
 
 // ─── Metadata dinâmica ─────────────────────────────────────
 
@@ -70,10 +72,11 @@ export default async function AnimalDetailPage({
   const { farmId, role } = farmUser
 
   // Carrega dados em paralelo
-  const [animal, lots, healthEvents] = await Promise.all([
+  const [animal, lots, healthEvents, feedHistory] = await Promise.all([
     getAnimalById(id, farmId),
     getLotsForSelect(farmId),
     getHealthEventsByAnimal(id, farmId, 10),
+    getAnimalFeedHistory(id, farmId, 5),
   ])
 
   if (!animal) notFound()
@@ -273,6 +276,27 @@ export default async function AnimalDetailPage({
           </InfoRows>
         </SectionCard>
       )}
+
+      {/* Nutrição */}
+      <SectionCard
+        title="Nutrição"
+        subtitle={animal.totalFeedConsumedKg > 0 ? `${animal.totalFeedConsumedKg.toFixed(1)} kg acumulado` : undefined}
+        action={
+          <Link href="/feed/new" className="text-xs text-primary hover:underline flex items-center gap-1">
+            <Wheat className="size-3" />
+            Registrar
+          </Link>
+        }
+        noPadding
+      >
+        <div className="p-4">
+          <AnimalFeedSection
+            totalFeedConsumedKg={animal.totalFeedConsumedKg}
+            estimatedFeedCost={animal.estimatedFeedCost}
+            recentHistory={feedHistory}
+          />
+        </div>
+      </SectionCard>
 
       {/* Saúde */}
       <SectionCard title="Eventos de Saúde" noPadding>
