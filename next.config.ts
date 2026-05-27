@@ -21,10 +21,14 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname:  '*.public.blob.vercel-storage.com',
       },
-      // Placeholder para dev
+      // Placeholders para dev
       {
         protocol: 'https',
         hostname:  'placehold.co',
+      },
+      {
+        protocol: 'https',
+        hostname:  'picsum.photos',
       },
     ],
   },
