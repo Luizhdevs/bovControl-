@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { getActiveFarm } from '@/lib/active-farm'
 
 import { getAnimalById, getLotsForSelect, getAnimalsForParentSelect } from '@/modules/animals/queries'
 import { AnimalForm } from '@/modules/animals/components/animal-form'
@@ -25,13 +25,9 @@ export default async function EditAnimalPage({
 
   const { id } = await params
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) redirect('/onboarding')
-
-  const farmId = farmUser.farmId
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
+  const { farmId } = activeFarm
 
   // Carrega tudo em paralelo
   const [animal, lots, mothers, fathers] = await Promise.all([

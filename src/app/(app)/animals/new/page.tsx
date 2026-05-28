@@ -1,6 +1,6 @@
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import { prisma } from '@/lib/prisma'
+import { getActiveFarm } from '@/lib/active-farm'
 
 import { getLotsForSelect, getAnimalsForParentSelect } from '@/modules/animals/queries'
 import { AnimalForm }  from '@/modules/animals/components/animal-form'
@@ -18,13 +18,9 @@ export default async function NewAnimalPage() {
   const session = await auth()
   if (!session) redirect('/login')
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) redirect('/onboarding')
-
-  const farmId = farmUser.farmId
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
+  const { farmId } = activeFarm
 
   // Carrega dados necessários para o form em paralelo
   const [lots, mothers, fathers] = await Promise.all([

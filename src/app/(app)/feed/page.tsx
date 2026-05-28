@@ -1,4 +1,5 @@
 import { auth }              from '@/lib/auth'
+import { getActiveFarm } from '@/lib/active-farm'
 import { redirect }          from 'next/navigation'
 import { prisma }            from '@/lib/prisma'
 import Link                  from 'next/link'
@@ -14,13 +15,9 @@ export default async function FeedPage() {
   const session = await auth()
   if (!session) redirect('/login')
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true, role: true },
-  })
-  if (!farmUser) redirect('/onboarding')
-
-  const { farmId, role } = farmUser
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
+  const { farmId, role } = activeFarm
   const canDelete = role === 'OWNER'
 
   const [feedData, sessions] = await Promise.all([

@@ -1,5 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import { auth }                from '@/lib/auth'
+import { getActiveFarm } from '@/lib/active-farm'
 import { prisma }              from '@/lib/prisma'
 
 import { getLotById, getAnimalsAvailableForLot } from '@/modules/lots/queries'
@@ -21,13 +22,10 @@ export async function generateMetadata({
   const session = await auth()
   if (!session) return {}
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) return {}
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) return {}
 
-  const lot = await getLotById(id, farmUser.farmId)
+  const lot = await getLotById(id, activeFarm.farmId)
   if (!lot) return { title: 'Lote | BovControl' }
 
   return { title: `${lot.name} | BovControl` }
@@ -45,13 +43,9 @@ export default async function LotDetailPage({
 
   const { id } = await params
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true, role: true },
-  })
-  if (!farmUser) redirect('/onboarding')
-
-  const { farmId, role } = farmUser
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
+  const { farmId, role } = activeFarm
 
   // Carrega dados em paralelo
   const [lot, availableAnimals] = await Promise.all([

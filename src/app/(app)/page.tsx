@@ -1,6 +1,6 @@
-import { auth }                from '@/lib/auth'
-import { redirect }            from 'next/navigation'
-import { prisma }              from '@/lib/prisma'
+import { auth }          from '@/lib/auth'
+import { redirect }      from 'next/navigation'
+import { getActiveFarm } from '@/lib/active-farm'
 import { getAnimalStats, getRecentAnimalsCount } from '@/modules/animals/queries'
 import { getDashboardMilkData, getWeeklyProduction } from '@/modules/milk/queries'
 import { getDashboardFeedData } from '@/modules/feed/queries'
@@ -81,13 +81,10 @@ export default async function DashboardPage() {
   const session = await auth()
   if (!session) redirect('/login')
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true, farm: { select: { name: true } } },
-  })
-  if (!farmUser) redirect('/onboarding')
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
 
-  const { farmId } = farmUser
+  const { farmId } = activeFarm
 
   // Todas as queries em paralelo — sem waterfall
   const [
@@ -124,7 +121,7 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title={farmUser.farm.name}
+        title={activeFarm.farm.name}
         description="Visão geral da fazenda"
       />
 

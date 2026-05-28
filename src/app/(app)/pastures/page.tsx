@@ -1,4 +1,5 @@
 import { auth }             from '@/lib/auth'
+import { getActiveFarm } from '@/lib/active-farm'
 import { redirect }         from 'next/navigation'
 import { prisma }           from '@/lib/prisma'
 import { canAccess }        from '@/lib/permissions'
@@ -15,13 +16,9 @@ export default async function PasturesPage() {
   const session = await auth()
   if (!session) redirect('/login')
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) redirect('/onboarding')
-
-  const { farmId } = farmUser
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
+  const { farmId } = activeFarm
 
   const [pastures, canManage] = await Promise.all([
     getPasturesByFarm(farmId),

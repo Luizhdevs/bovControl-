@@ -51,7 +51,7 @@ export function AnimalCard({ animal }: AnimalCardProps) {
           {animal.primaryPhoto ? (
             <div className="relative size-14 rounded-lg overflow-hidden">
               <Image
-                src={animal.primaryPhoto.url}
+                src={animal.primaryPhoto.thumbnailUrl ?? animal.primaryPhoto.url}
                 alt={`Foto de ${animal.tag}`}
                 fill
                 sizes="56px"

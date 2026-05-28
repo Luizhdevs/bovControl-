@@ -1,12 +1,11 @@
 /**
- * Recria as junctions necessárias para o dev server no Windows.
+ * Setup de dev no Windows.
  *
- * O .next é redirecionado para fora do OneDrive para evitar sync excessivo.
- * O Turbopack resolve módulos a partir do diretório real do runtime (Temp),
- * então precisamos de uma junction node_modules lá para que `require('tailwindcss')`
- * funcione durante a compilação do postcss.
+ * Problemas que resolve:
+ * 1. .next → Temp (evita sync excessivo do build pelo OneDrive)
+ * 2. Temp/.next/node_modules → PROJECT/node_modules (Turbopack worker acha tailwindcss)
  *
- * Executado automaticamente via `predev` antes de `npm run dev`.
+ * node_modules fica no projeto (OneDrive) mas pinado via preinstall/postinstall.
  */
 
 const { execSync } = require('child_process')
@@ -16,14 +15,20 @@ const path         = require('path')
 const PROJECT_ROOT  = path.resolve(__dirname, '..')
 const TEMP_NEXT     = 'C:\\Users\\onard\\AppData\\Local\\Temp\\bovcontrol-next'
 const PROJECT_NEXT  = path.join(PROJECT_ROOT, '.next')
-const TEMP_NM       = path.join(TEMP_NEXT, 'node_modules')
 const PROJECT_NM    = path.join(PROJECT_ROOT, 'node_modules')
+const TURBOPACK_NM  = path.join(TEMP_NEXT, 'node_modules')
 
-function isJunction(p) {
+function isJunctionTo(link, target) {
   try {
-    const stat = fs.lstatSync(p)
-    return stat.isSymbolicLink()
+    if (!fs.lstatSync(link).isSymbolicLink()) return false
+    const direct = fs.readlinkSync(link)
+    return direct.toLowerCase() === path.resolve(target).toLowerCase()
   } catch { return false }
+}
+
+function isReparsePoint(p) {
+  try { return fs.lstatSync(p).isSymbolicLink() }
+  catch { return false }
 }
 
 function ensureDir(p) {
@@ -31,23 +36,27 @@ function ensureDir(p) {
 }
 
 function mkJunction(link, target) {
-  if (isJunction(link)) return // já existe
-  if (fs.existsSync(link)) {
-    // diretório real (não junction) — remove
+  if (isJunctionTo(link, target)) return
+
+  if (isReparsePoint(link)) {
+    execSync(`cmd /c rmdir "${link}"`, { stdio: 'ignore' })
+  } else if (fs.existsSync(link)) {
     fs.rmSync(link, { recursive: true, force: true })
   }
+
   execSync(`cmd /c mklink /J "${link}" "${target}"`, { stdio: 'ignore' })
   console.log(`  junction: ${link} -> ${target}`)
 }
 
-// 1. Garante que o diretório Temp existe
+// 1. .next → Temp/bovcontrol-next
 ensureDir(TEMP_NEXT)
-
-// 2. Junction .next -> Temp (se ainda não existir)
 mkJunction(PROJECT_NEXT, TEMP_NEXT)
 
-// 3. Junction Temp/node_modules -> project/node_modules
-//    Permite que o Turbopack runtime resolva módulos a partir do Temp dir
-mkJunction(TEMP_NM, PROJECT_NM)
+// 2. Temp/.next/node_modules → PROJECT/node_modules
+//    O worker do Turbopack resolve módulos (tailwindcss etc) a partir do __dirname
+//    que cai em TEMP. Sem esse junction, o worker não acha os pacotes.
+if (fs.existsSync(PROJECT_NM) && !fs.lstatSync(PROJECT_NM).isSymbolicLink()) {
+  mkJunction(TURBOPACK_NM, PROJECT_NM)
+}
 
 console.log('Dev junctions OK')

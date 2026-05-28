@@ -2,7 +2,7 @@ import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { getActiveFarm } from '@/lib/active-farm'
 import { History } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/page-header'
@@ -132,11 +132,8 @@ export default async function ReproductionPage() {
   const session = await auth()
   if (!session) redirect('/login')
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) redirect('/onboarding')
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
 
   return (
     <div className="space-y-4">
@@ -164,7 +161,7 @@ export default async function ReproductionPage() {
           </div>
         }
       >
-        <ReproductionDashboardContent farmId={farmUser.farmId} />
+        <ReproductionDashboardContent farmId={activeFarm.farmId} />
       </Suspense>
     </div>
   )

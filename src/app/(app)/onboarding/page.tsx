@@ -1,6 +1,6 @@
-import { auth }     from '@/lib/auth'
-import { redirect } from 'next/navigation'
-import { prisma }   from '@/lib/prisma'
+import { auth }          from '@/lib/auth'
+import { redirect }      from 'next/navigation'
+import { getActiveFarm } from '@/lib/active-farm'
 import { Mail, ShieldAlert } from 'lucide-react'
 
 export const metadata = { title: 'Acesso Restrito | BovControl' }
@@ -10,10 +10,8 @@ export default async function OnboardingPage() {
   if (!session) redirect('/login')
 
   // Se o usuário JÁ tem uma fazenda, manda para o dashboard
-  const farmUser = await prisma.farmUser.findFirst({
-    where: { userId: session.user.id },
-  })
-  if (farmUser) redirect('/')
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (activeFarm) redirect('/')
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center px-4">

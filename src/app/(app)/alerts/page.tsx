@@ -1,7 +1,7 @@
-import { auth }     from '@/lib/auth'
-import { redirect } from 'next/navigation'
-import { prisma }   from '@/lib/prisma'
-import { getAlerts } from '@/modules/alerts/queries'
+import { auth }         from '@/lib/auth'
+import { redirect }     from 'next/navigation'
+import { getActiveFarm } from '@/lib/active-farm'
+import { getAlerts }    from '@/modules/alerts/queries'
 import { AlertCard } from '@/modules/alerts/components/alert-card'
 import { PageHeader } from '@/components/shared/page-header'
 import { Bell }        from 'lucide-react'
@@ -31,13 +31,10 @@ export default async function AlertsPage({ searchParams }: AlertsPageProps) {
     ? (rawStatus as AlertStatus)
     : 'PENDING'
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) redirect('/onboarding')
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
 
-  const alerts = await getAlerts(farmUser.farmId, { status })
+  const alerts = await getAlerts(activeFarm.farmId, { status })
 
   return (
     <div className="space-y-5">
@@ -82,7 +79,7 @@ export default async function AlertsPage({ searchParams }: AlertsPageProps) {
             {alerts.length} {alerts.length === 1 ? 'alerta' : 'alertas'}
           </p>
           {alerts.map((alert) => (
-            <AlertCard key={alert.id} alert={alert} farmId={farmUser.farmId} />
+            <AlertCard key={alert.id} alert={alert} farmId={activeFarm.farmId} />
           ))}
         </div>
       )}

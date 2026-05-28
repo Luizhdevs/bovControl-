@@ -56,7 +56,7 @@ const ANIMAL_LIST_SELECT = {
   },
   photos: {
     where:  { isPrimary: true },
-    select: { url: true },
+    select: { url: true, thumbnailUrl: true },
     take:   1,
   },
   _count: {

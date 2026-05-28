@@ -2,6 +2,7 @@ import { redirect }    from 'next/navigation'
 import Link            from 'next/link'
 import { Suspense }    from 'react'
 import { auth }        from '@/lib/auth'
+import { getActiveFarm } from '@/lib/active-farm'
 import { prisma }      from '@/lib/prisma'
 import { History }     from 'lucide-react'
 
@@ -73,11 +74,8 @@ export default async function MilkPage() {
   const session = await auth()
   if (!session) redirect('/login')
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) redirect('/onboarding')
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
 
   return (
     <div className="space-y-4 pb-8">
@@ -87,7 +85,7 @@ export default async function MilkPage() {
       />
 
       <Suspense fallback={<MilkLoading />}>
-        <MilkDashboardContent farmId={farmUser.farmId} />
+        <MilkDashboardContent farmId={activeFarm.farmId} />
       </Suspense>
     </div>
   )

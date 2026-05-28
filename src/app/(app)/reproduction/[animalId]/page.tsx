@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { auth } from '@/lib/auth'
+import { getActiveFarm } from '@/lib/active-farm'
 import { prisma } from '@/lib/prisma'
 import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -26,14 +27,11 @@ export async function generateMetadata({
   const session = await auth()
   if (!session) return {}
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) return {}
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) return {}
 
   const animal = await prisma.animal.findFirst({
-    where:  { id: animalId, farmId: farmUser.farmId },
+    where:  { id: animalId, farmId: activeFarm.farmId },
     select: { tag: true, name: true },
   })
   if (!animal) return { title: 'Reprodução | BovControl' }
@@ -54,13 +52,9 @@ export default async function ReproductionAnimalPage({
 
   const { animalId } = await params
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true, role: true },
-  })
-  if (!farmUser) redirect('/onboarding')
-
-  const { farmId, role } = farmUser
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
+  const { farmId, role } = activeFarm
   const canDelete        = ['OWNER', 'MANAGER'].includes(role)
 
   const [summary, records] = await Promise.all([

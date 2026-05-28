@@ -1,7 +1,7 @@
-import { redirect }   from 'next/navigation'
-import { Suspense }   from 'react'
-import { auth }       from '@/lib/auth'
-import { prisma }     from '@/lib/prisma'
+import { redirect }      from 'next/navigation'
+import { Suspense }      from 'react'
+import { auth }          from '@/lib/auth'
+import { getActiveFarm } from '@/lib/active-farm'
 
 import { getMilkHistoryByFarm, getMilkingSessionsByFarm } from '@/modules/milk/queries'
 import { PageHeader }    from '@/components/shared/page-header'
@@ -164,11 +164,8 @@ export default async function MilkHistoryPage({
   const session = await auth()
   if (!session) redirect('/login')
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) redirect('/onboarding')
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
 
   const params = await searchParams
   const days   = Math.min(Math.max(parseInt(params.days ?? '30', 10), 7), 90)
@@ -182,7 +179,7 @@ export default async function MilkHistoryPage({
       />
 
       <Suspense fallback={<MilkHistoryLoading />}>
-        <HistoryContent farmId={farmUser.farmId} days={days} />
+        <HistoryContent farmId={activeFarm.farmId} days={days} />
       </Suspense>
     </div>
   )

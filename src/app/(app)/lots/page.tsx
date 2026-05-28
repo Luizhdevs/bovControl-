@@ -1,6 +1,7 @@
 import { Suspense }    from 'react'
 import Link            from 'next/link'
 import { auth }        from '@/lib/auth'
+import { getActiveFarm } from '@/lib/active-farm'
 import { redirect }    from 'next/navigation'
 import { Button }      from '@/components/ui/button'
 import { Plus }        from 'lucide-react'
@@ -117,13 +118,9 @@ export default async function LotsPage({ searchParams }: PageProps) {
   if (!session) redirect('/login')
 
   const { prisma } = await import('@/lib/prisma')
-  const farmUser   = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) redirect('/onboarding')
-
-  const farmId = farmUser.farmId
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
+  const { farmId } = activeFarm
   const params = await searchParams
 
   return (

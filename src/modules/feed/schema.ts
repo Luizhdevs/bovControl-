@@ -27,8 +27,8 @@ export type FeedTypeInput = z.infer<typeof feedTypeSchema>
 // ─── Sessão de alimentação ─────────────────────────────────────
 
 export const feedSessionSchema = z.object({
-  lotId:      z.string().cuid('Lote inválido'),
-  feedTypeId: z.string().cuid('Tipo de ração inválido'),
+  lotId:      z.string().min(1, 'Selecione o lote'),
+  feedTypeId: z.string().min(1, 'Selecione o tipo de ração'),
   bagCount:   z
     .number({ required_error: 'Informe o número de sacos' })
     .int('Número de sacos deve ser inteiro')
@@ -43,8 +43,8 @@ export type FeedSessionInput = z.infer<typeof feedSessionSchema>
 // ─── Filtros de listagem ───────────────────────────────────────
 
 export const feedFiltersSchema = z.object({
-  lotId:      z.string().cuid().optional(),
-  feedTypeId: z.string().cuid().optional(),
+  lotId:      z.string().optional(),
+  feedTypeId: z.string().optional(),
   startDate:  z.coerce.date().optional(),
   endDate:    z.coerce.date().optional(),
 })

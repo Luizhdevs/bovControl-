@@ -1,4 +1,5 @@
 import { auth }                   from '@/lib/auth'
+import { getActiveFarm } from '@/lib/active-farm'
 import { redirect }               from 'next/navigation'
 import { prisma }                 from '@/lib/prisma'
 import { canAccess }              from '@/lib/permissions'
@@ -71,13 +72,9 @@ export default async function HealthEventsPage({ searchParams }: Props) {
   const session = await auth()
   if (!session) redirect('/login')
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) redirect('/onboarding')
-
-  const { farmId } = farmUser
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
+  const { farmId } = activeFarm
 
   const typeFilter     = params.type     as HealthEventType | undefined
   const resolvedFilter = params.resolved as 'true' | 'false' | undefined

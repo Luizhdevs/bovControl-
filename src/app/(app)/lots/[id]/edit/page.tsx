@@ -1,5 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import { auth }                from '@/lib/auth'
+import { getActiveFarm } from '@/lib/active-farm'
 import { prisma }              from '@/lib/prisma'
 import { PageHeader }          from '@/components/shared/page-header'
 import { getLotById, getPasturesForSelect } from '@/modules/lots/queries'
@@ -14,13 +15,10 @@ export async function generateMetadata({
   const session  = await auth()
   if (!session) return {}
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) return {}
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) return {}
 
-  const lot = await getLotById(id, farmUser.farmId)
+  const lot = await getLotById(id, activeFarm.farmId)
   return { title: lot ? `Editar ${lot.name} | BovControl` : 'Editar Lote | BovControl' }
 }
 
@@ -33,13 +31,9 @@ export default async function EditLotPage({
   if (!session) redirect('/login')
 
   const { id }   = await params
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) redirect('/onboarding')
-
-  const farmId = farmUser.farmId
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
+  const { farmId } = activeFarm
 
   const [lot, pastures] = await Promise.all([
     getLotById(id, farmId),

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { getActiveFarm } from '@/lib/active-farm'
 import { PageHeader } from '@/components/shared/page-header'
 import { SectionCard } from '@/components/shared/section-card'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -22,13 +22,9 @@ export default async function ReproductionHistoryPage({
   const session = await auth()
   if (!session) redirect('/login')
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true, role: true },
-  })
-  if (!farmUser) redirect('/onboarding')
-
-  const { farmId, role } = farmUser
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
+  const { farmId, role } = activeFarm
   const canDelete        = ['OWNER', 'MANAGER'].includes(role)
 
   const params      = await searchParams

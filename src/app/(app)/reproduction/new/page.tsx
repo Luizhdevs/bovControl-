@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { getActiveFarm } from '@/lib/active-farm'
 import { PageHeader } from '@/components/shared/page-header'
 import { EmptyState } from '@/components/shared/empty-state'
 import { getAnimalsForReproduction } from '@/modules/reproduction/queries'
@@ -21,14 +21,11 @@ export default async function ReproductionNewPage({
   const session = await auth()
   if (!session) redirect('/login')
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) redirect('/onboarding')
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
 
   const params  = await searchParams
-  const animals = await getAnimalsForReproduction(farmUser.farmId)
+  const animals = await getAnimalsForReproduction(activeFarm.farmId)
 
   const preSelected: AnimalForReproduction | undefined = params.animalId
     ? animals.find((a) => a.id === params.animalId)
@@ -51,7 +48,7 @@ export default async function ReproductionNewPage({
         />
       ) : (
         <ReproductionForm
-          farmId={farmUser.farmId}
+          farmId={activeFarm.farmId}
           animals={animals}
           preSelectedAnimal={preSelected}
           redirectTo="/reproduction"

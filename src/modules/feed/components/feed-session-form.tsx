@@ -40,7 +40,6 @@ export function FeedSessionForm({ farmId, lots, feedTypes }: FeedSessionFormProp
     resolver:     zodResolver(feedSessionSchema),
     defaultValues: {
       bagCount: 1,
-      date:     new Date(),
     },
   })
 

@@ -1,4 +1,5 @@
 import { auth }           from '@/lib/auth'
+import { getActiveFarm } from '@/lib/active-farm'
 import { redirect, notFound } from 'next/navigation'
 import { prisma }         from '@/lib/prisma'
 import { PageHeader }     from '@/components/shared/page-header'
@@ -17,13 +18,9 @@ export default async function FeedTypeEditPage({
 
   const { id } = await params
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true, role: true },
-  })
-  if (!farmUser) redirect('/onboarding')
-
-  const { farmId, role } = farmUser
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
+  const { farmId, role } = activeFarm
   if (!['OWNER', 'MANAGER'].includes(role)) redirect('/feed-types')
 
   const feedType = await getFeedTypeById(id, farmId)

@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { getActiveFarm } from '@/lib/active-farm'
 
 import { getAnimalById, getLotsForSelect }         from '@/modules/animals/queries'
 import { getHealthEventsByAnimal }                 from '@/modules/health-events/queries'
@@ -37,13 +37,10 @@ export async function generateMetadata({
   const session = await auth()
   if (!session) return {}
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) return {}
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) return {}
 
-  const animal = await getAnimalById(id, farmUser.farmId)
+  const animal = await getAnimalById(id, activeFarm.farmId)
   if (!animal) return { title: 'Animal | BovControl' }
 
   return {
@@ -63,13 +60,9 @@ export default async function AnimalDetailPage({
 
   const { id } = await params
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true, role: true },
-  })
-  if (!farmUser) redirect('/onboarding')
-
-  const { farmId, role } = farmUser
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
+  const { farmId, role } = activeFarm
 
   // Carrega dados em paralelo
   const [animal, lots, healthEvents, feedHistory] = await Promise.all([

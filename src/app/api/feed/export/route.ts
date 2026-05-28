@@ -9,6 +9,7 @@
 
 import { NextResponse } from 'next/server'
 import { auth }         from '@/lib/auth'
+import { getActiveFarm } from '@/lib/active-farm'
 import { prisma }       from '@/lib/prisma'
 import { startOfDay, endOfDay, subDays, format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -30,13 +31,9 @@ export async function GET(request: Request): Promise<NextResponse> {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) return NextResponse.json({ error: 'Fazenda não encontrada' }, { status: 403 })
-
-  const { farmId } = farmUser
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) return NextResponse.json({ error: 'Fazenda não encontrada' }, { status: 403 })
+  const { farmId } = activeFarm
   const { searchParams } = new URL(request.url)
   const type = searchParams.get('type') ?? 'sessions'
   const days = Math.min(365, Math.max(1, parseInt(searchParams.get('days') ?? '30', 10)))

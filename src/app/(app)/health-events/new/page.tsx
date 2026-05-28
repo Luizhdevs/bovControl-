@@ -1,7 +1,8 @@
-import { auth }               from '@/lib/auth'
-import { redirect }           from 'next/navigation'
-import { prisma }             from '@/lib/prisma'
-import { canAccess }          from '@/lib/permissions'
+import { auth }          from '@/lib/auth'
+import { redirect }      from 'next/navigation'
+import { prisma }        from '@/lib/prisma'
+import { getActiveFarm } from '@/lib/active-farm'
+import { canAccess }     from '@/lib/permissions'
 import { HealthEventForm }    from '@/modules/health-events/components/health-event-form'
 import { PageHeader }         from '@/components/shared/page-header'
 
@@ -16,13 +17,9 @@ export default async function NewHealthEventPage({ searchParams }: Props) {
   const session = await auth()
   if (!session) redirect('/login')
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) redirect('/onboarding')
-
-  const { farmId } = farmUser
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
+  const { farmId } = activeFarm
 
   const allowed = await canAccess(session.user.id, farmId, 'WORKER')
   if (!allowed) redirect('/health-events')

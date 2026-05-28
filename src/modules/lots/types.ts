@@ -43,7 +43,7 @@ export type AnimalInLot = {
   breed:        string
   birthDate:    Date | null
   lot:          Pick<Lot, 'id' | 'name' | 'type'> | null
-  primaryPhoto: Pick<AnimalPhoto, 'url'> | null
+  primaryPhoto: Pick<AnimalPhoto, 'url' | 'thumbnailUrl'> | null
   _count:       { photos: number }
 }
 

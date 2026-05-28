@@ -113,7 +113,7 @@ export async function getLotById(
             lot: { select: { id: true, name: true, type: true } },
             photos: {
               where:  { isPrimary: true },
-              select: { url: true },
+              select: { url: true, thumbnailUrl: true },
               take:   1,
             },
             _count: { select: { photos: true } },
@@ -197,7 +197,7 @@ export async function getAnimalsAvailableForLot(
       lot: { select: { id: true, name: true, type: true } },
       photos: {
         where:  { isPrimary: true },
-        select: { url: true },
+        select: { url: true, thumbnailUrl: true },
         take:   1,
       },
       _count: { select: { photos: true } },

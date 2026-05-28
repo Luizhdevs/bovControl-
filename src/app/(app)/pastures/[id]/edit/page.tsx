@@ -1,11 +1,11 @@
-import { auth }            from '@/lib/auth'
-import { redirect }        from 'next/navigation'
-import { notFound }        from 'next/navigation'
-import { prisma }          from '@/lib/prisma'
-import { canAccess }       from '@/lib/permissions'
-import { getPastureById }  from '@/modules/pastures/queries'
-import { PastureForm }     from '@/modules/pastures/components/pasture-form'
-import { PageHeader }      from '@/components/shared/page-header'
+import { auth }           from '@/lib/auth'
+import { redirect }       from 'next/navigation'
+import { notFound }       from 'next/navigation'
+import { getActiveFarm }  from '@/lib/active-farm'
+import { canAccess }      from '@/lib/permissions'
+import { getPastureById } from '@/modules/pastures/queries'
+import { PastureForm }    from '@/modules/pastures/components/pasture-form'
+import { PageHeader }     from '@/components/shared/page-header'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -16,13 +16,10 @@ export async function generateMetadata({ params }: Props) {
   const session = await auth()
   if (!session) return { title: 'Editar Pasto | BovControl' }
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) return { title: 'Editar Pasto | BovControl' }
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) return { title: 'Editar Pasto | BovControl' }
 
-  const pasture = await getPastureById(id, farmUser.farmId)
+  const pasture = await getPastureById(id, activeFarm.farmId)
   return { title: pasture ? `Editar ${pasture.name} | BovControl` : 'Pasto não encontrado' }
 }
 
@@ -31,15 +28,12 @@ export default async function EditPasturePage({ params }: Props) {
   const session = await auth()
   if (!session) redirect('/login')
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) redirect('/onboarding')
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
 
   const [pasture, allowed] = await Promise.all([
-    getPastureById(id, farmUser.farmId),
-    canAccess(session.user.id, farmUser.farmId, 'MANAGER'),
+    getPastureById(id, activeFarm.farmId),
+    canAccess(session.user.id, activeFarm.farmId, 'MANAGER'),
   ])
 
   if (!pasture) notFound()
@@ -52,7 +46,7 @@ export default async function EditPasturePage({ params }: Props) {
         backHref="/pastures"
       />
       <PastureForm
-        farmId={farmUser.farmId}
+        farmId={activeFarm.farmId}
         pastureId={pasture.id}
         defaultValues={{
           name:         pasture.name,

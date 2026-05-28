@@ -1,7 +1,9 @@
 import { auth }                  from '@/lib/auth'
 import { redirect }              from 'next/navigation'
-import { prisma }                from '@/lib/prisma'
+import { getActiveFarm }         from '@/lib/active-farm'
+import { getUserFarms }          from '@/modules/farms/queries'
 import { getPendingAlertCount }  from '@/modules/alerts/queries'
+import { FarmSwitcher }          from '@/components/shared/farm-switcher'
 import { SyncProvider }          from '@/components/providers/sync-provider'
 import { SyncIndicator }         from '@/components/shared/sync-indicator'
 import Link                      from 'next/link'
@@ -43,25 +45,37 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const session = await auth()
   if (!session) redirect('/login')
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
+  const [activeFarm, allFarms] = await Promise.all([
+    getActiveFarm(session.user.id),
+    getUserFarms(session.user.id),
+  ])
 
-  const alertCount = farmUser
-    ? await getPendingAlertCount(farmUser.farmId)
-    : 0
+  if (!activeFarm) redirect('/onboarding')
+
+  const alertCount = await getPendingAlertCount(activeFarm.farmId)
+  const canCreate  = allFarms.some((f) => f.role === 'OWNER')
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Top header (mobile) */}
-      <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur-md px-4 h-14 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      {/* Top header */}
+      <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur-md px-4 h-14 flex items-center gap-3">
+        {/* Logo */}
+        <div className="flex items-center gap-1.5 shrink-0">
           <span className="text-2xl">🐄</span>
-          <span className="font-bold text-lg tracking-tight">BovControl</span>
+          <span className="font-bold text-lg tracking-tight hidden sm:block">BovControl</span>
         </div>
-        <div className="flex items-center gap-3">
-          {/* Indicador de sync offline */}
+
+        {/* Farm switcher */}
+        <div className="flex-1 min-w-0">
+          <FarmSwitcher
+            farms={allFarms}
+            activeFarmId={activeFarm.farmId}
+            canCreate={canCreate}
+          />
+        </div>
+
+        {/* Right side */}
+        <div className="flex items-center gap-2 shrink-0">
           <SyncIndicator />
           <span className="text-xs text-muted-foreground hidden sm:block">
             {session.user.name}

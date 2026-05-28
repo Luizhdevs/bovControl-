@@ -1,4 +1,5 @@
 import { auth }         from '@/lib/auth'
+import { getActiveFarm } from '@/lib/active-farm'
 import { redirect }     from 'next/navigation'
 import { prisma }       from '@/lib/prisma'
 import { canAccess }    from '@/lib/permissions'
@@ -11,13 +12,10 @@ export default async function NewPasturePage() {
   const session = await auth()
   if (!session) redirect('/login')
 
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: { farmId: true },
-  })
-  if (!farmUser) redirect('/onboarding')
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
 
-  const allowed = await canAccess(session.user.id, farmUser.farmId, 'MANAGER')
+  const allowed = await canAccess(session.user.id, activeFarm.farmId, 'MANAGER')
   if (!allowed) redirect('/pastures')
 
   return (
@@ -26,7 +24,7 @@ export default async function NewPasturePage() {
         title="Novo Pasto"
         backHref="/pastures"
       />
-      <PastureForm farmId={farmUser.farmId} />
+      <PastureForm farmId={activeFarm.farmId} />
     </div>
   )
 }
