@@ -3,7 +3,9 @@ import { redirect }        from 'next/navigation'
 import { prisma }          from '@/lib/prisma'
 import { canAccess }       from '@/lib/permissions'
 import { getFarmInvites }  from '@/modules/invites/queries'
-import { getStorageStatus } from '@/lib/storage-limits'
+import { getStorageStatus }    from '@/lib/storage-limits'
+import { STORAGE_PROVIDER_NAME } from '@/lib/storage/provider'
+import { getActiveFarm }         from '@/lib/active-farm'
 import { InviteForm }      from '@/modules/invites/components/invite-form'
 import { InviteList }      from '@/modules/invites/components/invite-list'
 import { PageHeader }      from '@/components/shared/page-header'
@@ -22,20 +24,10 @@ export default async function SettingsPage() {
   const session = await auth()
   if (!session) redirect('/login')
 
-  // Carrega dados do usuário na fazenda
-  const farmUser = await prisma.farmUser.findFirst({
-    where:  { userId: session.user.id },
-    select: {
-      farmId: true,
-      role:   true,
-      farm:   {
-        select: { id: true, name: true, city: true, state: true, createdAt: true },
-      },
-    },
-  })
-  if (!farmUser) redirect('/onboarding')
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) redirect('/onboarding')
 
-  const { farmId, role, farm } = farmUser
+  const { farmId, role, farm } = activeFarm
 
   const [isOwner, members, storageStatus] = await Promise.all([
     canAccess(session.user.id, farmId, 'OWNER'),
@@ -72,9 +64,14 @@ export default async function SettingsPage() {
 
       {/* ── Armazenamento ───────────────────────────────── */}
       <section className="rounded-xl border border-border bg-card p-4 space-y-4">
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <HardDrive className="size-4 text-primary" />
-          Armazenamento de Fotos
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <HardDrive className="size-4 text-primary" />
+            Armazenamento de Fotos
+          </div>
+          <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+            {STORAGE_PROVIDER_NAME === 'r2' ? 'Cloudflare R2' : 'Local'}
+          </span>
         </div>
 
         {/* Fotos */}
@@ -119,11 +116,19 @@ export default async function SettingsPage() {
           </p>
         </div>
 
-        {!storageStatus.withinLimits && (
+        {!storageStatus.withinLimits ? (
           <p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
-            ⚠️ Limite atingido. Exclua fotos antigas para liberar espaço.
+            Limite atingido. Exclua fotos antigas para liberar espaço.
           </p>
-        )}
+        ) : storageUsageMax(storageStatus) >= 95 ? (
+          <p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
+            Capacidade quase esgotada ({storageUsageMax(storageStatus).toFixed(0)}%). Exclua fotos antigas em breve.
+          </p>
+        ) : storageUsageMax(storageStatus) >= 80 ? (
+          <p className="text-xs text-amber-600 bg-amber-500/10 rounded-lg px-3 py-2">
+            Uso elevado ({storageUsageMax(storageStatus).toFixed(0)}%). Considere liberar espaço.
+          </p>
+        ) : null}
       </section>
 
       {/* ── Perfil ──────────────────────────────────────── */}
@@ -196,9 +201,13 @@ export default async function SettingsPage() {
 // ─── Helpers ───────────────────────────────────────────────
 
 function usageBarColor(pct: number, normalClass: string): string {
-  if (pct >= 90) return 'bg-destructive'
-  if (pct >= 70) return 'bg-amber-500'
+  if (pct >= 95) return 'bg-destructive'
+  if (pct >= 80) return 'bg-amber-500'
   return normalClass
+}
+
+function storageUsageMax(s: { imageUsagePct: number; storageUsagePct: number }): number {
+  return Math.max(s.imageUsagePct, s.storageUsagePct)
 }
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {

@@ -7,7 +7,7 @@ import { auth } from '@/lib/auth'
 import { requireFarmAccess } from '@/lib/permissions'
 import { generateAnimalTag } from '@/modules/animals/queries'
 import { incrementStorageCounters, decrementStorageCounters } from '@/lib/storage-limits'
-import { deleteFile } from '@/lib/blob-storage'
+import { deleteFile } from '@/lib/storage/provider'
 
 // Regras de domínio compartilhadas — NENHUMA regra de negócio é definida aqui
 import {

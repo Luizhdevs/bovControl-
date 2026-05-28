@@ -8,7 +8,7 @@
  *   4. Validação de tamanho (≤5 MB) e magic bytes
  *   5. Verificação de limites de storage da fazenda
  *   6. Compressão sharp + geração de thumbnail (image-processor)
- *   7. Upload para blob storage dev/prod (blob-storage)
+ *   7. Upload para storage (local em dev, Cloudflare R2 em prod)
  *   8. Retorna { url, thumbnailUrl, sizeKb } para o action addAnimalPhoto
  *
  * O action addAnimalPhoto persiste o registro e atualiza os contadores
@@ -25,7 +25,7 @@ import {
 } from '@/lib/storage-limits'
 import { checkUploadRateLimit, getRemainingUploads } from '@/lib/upload-rate-limit'
 import { processImage }    from '@/lib/image-processor'
-import { uploadFile }      from '@/lib/blob-storage'
+import { uploadFile }      from '@/lib/storage/provider'
 
 // Tipos MIME aceitos pelo servidor — a validação real é por magic bytes,
 // esta lista é apenas para feedback rápido antes de ler o buffer.
@@ -129,12 +129,12 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     // ── 7. Upload para blob storage ──────────────────────────────────────
     const uuid       = randomUUID()
-    const imgPath    = `animals/${animalId}/${uuid}.jpg`
-    const thumbPath  = `animals/${animalId}/thumb_${uuid}.jpg`
+    const imgPath    = `animals/${animal.farmId}/${animalId}/${uuid}.webp`
+    const thumbPath  = `animals/${animal.farmId}/${animalId}/thumb-${uuid}.webp`
 
     const [imgResult, thumbResult] = await Promise.all([
-      uploadFile(imgPath,   processed.imageBuffer, 'image/jpeg'),
-      uploadFile(thumbPath, processed.thumbBuffer,  'image/jpeg'),
+      uploadFile(imgPath,   processed.imageBuffer, 'image/webp'),
+      uploadFile(thumbPath, processed.thumbBuffer,  'image/webp'),
     ])
 
     // sizeKb combinado (original + thumb) — armazenado em AnimalPhoto
