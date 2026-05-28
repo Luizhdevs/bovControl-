@@ -17,8 +17,9 @@ export class R2StorageProvider implements StorageProvider {
     this.bucket    = env.R2_BUCKET_NAME
     this.publicUrl = env.R2_PUBLIC_URL.replace(/\/$/, '')
     this.client    = new S3Client({
-      region:      'auto',
-      endpoint:    `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      region:         'auto',
+      endpoint:       `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      forcePathStyle: true,
       credentials: {
         accessKeyId:     env.R2_ACCESS_KEY_ID,
         secretAccessKey: env.R2_SECRET_ACCESS_KEY,
