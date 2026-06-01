@@ -10,8 +10,8 @@ import { Loader2 } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
-  const [email, setEmail]       = useState('admin@saldanha.com.br')
-  const [password, setPassword] = useState('bovcontrol123')
+  const [email, setEmail]       = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError]       = useState('')
   const [isPending, start]      = useTransition()
 
