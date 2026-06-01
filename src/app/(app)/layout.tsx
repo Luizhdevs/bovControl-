@@ -4,6 +4,7 @@ import { getActiveFarm }         from '@/lib/active-farm'
 import { getUserFarms }          from '@/modules/farms/queries'
 import { getPendingAlertCount }  from '@/modules/alerts/queries'
 import { FarmSwitcher }          from '@/components/shared/farm-switcher'
+import { MobileNav }             from '@/components/shared/mobile-nav'
 import { SyncProvider }          from '@/components/providers/sync-provider'
 import { SyncIndicator }         from '@/components/shared/sync-indicator'
 import Link                      from 'next/link'
@@ -17,12 +18,11 @@ import {
   Heart,
   Bell,
   Settings,
-  LogOut,
   Wheat,
+  ClipboardList,
 } from 'lucide-react'
-import { cn }     from '@/lib/utils'
-import { Button } from '@/components/ui/button'
-import { signOut } from '@/lib/auth'
+import { cn }             from '@/lib/utils'
+import { SignOutButton }  from '@/components/shared/sign-out-button'
 
 // ─── Nav items ────────────────────────────────────────────
 // Ordem importa: os primeiros 5 aparecem na bottom nav mobile.
@@ -80,11 +80,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <span className="text-xs text-muted-foreground hidden sm:block">
             {session.user.name}
           </span>
-          <form action={async () => { 'use server'; await signOut({ redirectTo: '/login' }) }}>
-            <Button variant="ghost" size="sm" type="submit">
-              <LogOut className="size-4" />
-            </Button>
-          </form>
+          <SignOutButton />
         </div>
       </header>
 
@@ -111,6 +107,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               )}
             </Link>
           ))}
+
+          {/* Auditoria — apenas OWNER e MANAGER */}
+          {['OWNER', 'MANAGER'].includes(activeFarm.role) && (
+            <Link
+              href="/audit"
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg',
+                'text-sm font-medium text-muted-foreground',
+                'hover:bg-muted hover:text-foreground transition-colors',
+              )}
+            >
+              <ClipboardList className="size-4 shrink-0" />
+              <span className="flex-1">Auditoria</span>
+            </Link>
+          )}
         </aside>
 
         {/* Área de conteúdo */}
@@ -121,28 +132,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </main>
       </div>
 
-      {/* Bottom nav mobile — mostra os 5 primeiros itens */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-background/95 backdrop-blur-md">
-        <div className="flex items-center justify-around px-2 py-2">
-          {NAV_ITEMS.slice(0, 5).map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg text-muted-foreground hover:text-foreground transition-colors min-w-[44px] min-h-[44px] justify-center"
-            >
-              <div className="relative">
-                <item.icon className="size-5" />
-                {'hasBadge' in item && item.hasBadge && alertCount > 0 && (
-                  <span className="absolute -top-1 -right-1 flex size-3.5 items-center justify-center rounded-full bg-destructive text-[8px] font-bold text-destructive-foreground">
-                    {alertCount > 9 ? '9+' : alertCount}
-                  </span>
-                )}
-              </div>
-              <span className="text-[10px] font-medium">{item.label}</span>
-            </Link>
-          ))}
-        </div>
-      </nav>
+      {/* Bottom nav mobile com botão "Mais" */}
+      <MobileNav
+        alertCount={alertCount}
+        showAudit={['OWNER', 'MANAGER'].includes(activeFarm.role)}
+      />
 
       {/* SyncProvider — gerencia sync offline sem renderizar nada visível */}
       <SyncProvider />

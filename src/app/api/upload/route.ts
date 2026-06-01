@@ -19,6 +19,7 @@ import { randomUUID }   from 'crypto'
 import { NextResponse } from 'next/server'
 import { auth }         from '@/lib/auth'
 import { prisma }       from '@/lib/prisma'
+import { auditLog }     from '@/lib/audit'
 import {
   checkStorageLimit,
   MAX_IMAGE_SIZE_BYTES,
@@ -139,6 +140,22 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     // sizeKb combinado (original + thumb) — armazenado em AnimalPhoto
     const sizeKb = processed.stats.finalSizeKb + processed.stats.thumbSizeKb
+
+    // ── Audit do upload (storage event — antes do DB record em addAnimalPhoto) ──
+    auditLog({
+      farmId:   animal.farmId,
+      userId,
+      action:   'CREATE',
+      entity:   'AnimalPhoto',
+      entityId: uuid,
+      metadata: {
+        source:   'web',
+        filename: file.name,
+        mimeType: file.type,
+        size:     sizeKb,
+        animalId,
+      },
+    })
 
     // ── 8. Responde com URLs e tamanho ───────────────────────────────────
     const remaining = getRemainingUploads(userId)

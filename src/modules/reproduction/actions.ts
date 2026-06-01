@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
 import { requireFarmAccess } from '@/lib/permissions'
 import { canRegisterReproduction } from '@/modules/shared/domain/animal-guards'
+import { auditCreate, auditUpdate, auditDelete } from '@/lib/audit'
 import {
   reproductionSchema,
   updateReproductionStatusSchema,
@@ -113,6 +114,22 @@ export async function registerReproduction(
       return created
     })
 
+    auditCreate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Reproduction',
+      entityId: record.id,
+      after: {
+        animalId,
+        type,
+        date,
+        status,
+        bullName:      bullName ?? null,
+        nextCheckDate: resolvedNextCheckDate,
+      },
+      metadata: { source: 'web' },
+    })
+
     revalidatePath('/reproduction')
     revalidatePath(`/reproduction/${animalId}`)
     revalidatePath(`/animals/${animalId}`)
@@ -192,6 +209,15 @@ export async function updateReproductionStatus(
       }
     })
 
+    auditUpdate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Reproduction',
+      entityId: parsed.data.recordId,
+      before:   { status: existing.status },
+      after:    { status: parsed.data.status, nextCheckDate: resolvedNextCheckDate },
+    })
+
     revalidatePath('/reproduction')
     revalidatePath(`/reproduction/${existing.animalId}`)
     revalidatePath(`/animals/${existing.animalId}`)
@@ -222,11 +248,25 @@ export async function deleteReproduction(
 
     const record = await prisma.reproduction.findFirst({
       where:  { id: recordId, animal: { farmId } },
-      select: { id: true, animalId: true },
+      select: { id: true, animalId: true, type: true, date: true, status: true, bullName: true },
     })
     if (!record) return { success: false, error: 'Registro não encontrado' }
 
     await prisma.reproduction.delete({ where: { id: recordId } })
+
+    auditDelete({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Reproduction',
+      entityId: recordId,
+      before: {
+        animalId: record.animalId,
+        type:     record.type,
+        date:     record.date,
+        status:   record.status,
+        bullName: record.bullName,
+      },
+    })
 
     revalidatePath('/reproduction')
     revalidatePath(`/reproduction/${record.animalId}`)

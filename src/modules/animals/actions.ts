@@ -8,6 +8,7 @@ import { requireFarmAccess } from '@/lib/permissions'
 import { generateAnimalTag } from '@/modules/animals/queries'
 import { incrementStorageCounters, decrementStorageCounters } from '@/lib/storage-limits'
 import { deleteFile } from '@/lib/storage/provider'
+import { auditCreate, auditUpdate, auditDelete, auditDeactivate } from '@/lib/audit'
 
 // Regras de domínio compartilhadas — NENHUMA regra de negócio é definida aqui
 import {
@@ -59,8 +60,9 @@ export async function createAnimal(
 
     // Retry em caso de race condition (dois cadastros simultâneos geram a mesma tag)
     let animal: { id: string } | null = null
+    let tag = ''
     for (let attempt = 0; attempt < 5; attempt++) {
-      const tag = await generateAnimalTag(farmId)
+      tag = await generateAnimalTag(farmId)
       try {
         animal = await prisma.animal.create({
           data: {
@@ -91,6 +93,23 @@ export async function createAnimal(
       return { success: false, error: 'Não foi possível gerar brinco único. Tente novamente.' }
     }
 
+    auditCreate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Animal',
+      entityId: animal.id,
+      after: {
+        tag,
+        name:      parsed.data.name      ?? null,
+        category,
+        breed:     parsed.data.breed,
+        sex:       parsed.data.sex,
+        birthDate: parsed.data.birthDate ?? null,
+        lotId:     parsed.data.lotId     ?? null,
+      },
+      metadata: { source: 'web' },
+    })
+
     revalidatePath('/animals')
 
     return { success: true, data: { id: animal.id } }
@@ -120,7 +139,12 @@ export async function updateAnimal(
 
     const existing = await prisma.animal.findFirst({
       where:  { id: animalId, farmId },
-      select: { id: true },
+      select: {
+        id: true, sex: true, category: true, purpose: true, status: true,
+        name: true, breed: true, birthDate: true, birthType: true,
+        motherId: true, fatherId: true, lotId: true,
+        exitDate: true, exitReason: true, observations: true,
+      },
     })
     if (!existing) return { success: false, error: 'Animal não encontrado' }
 
@@ -137,6 +161,17 @@ export async function updateAnimal(
         exitReason:   parsed.data.exitReason   ?? undefined,
         observations: parsed.data.observations ?? undefined,
       },
+    })
+
+    const { id: _id, ...beforeFields } = existing
+    auditUpdate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Animal',
+      entityId: animalId,
+      before:   beforeFields,
+      after:    parsed.data,
+      metadata: { source: 'web' },
     })
 
     revalidatePath('/animals')
@@ -173,7 +208,7 @@ export async function transferAnimalToLot(
 
     const animal = await prisma.animal.findFirst({
       where:  { id: parsed.data.animalId, farmId },
-      select: { id: true, sex: true, category: true, status: true, birthType: true },
+      select: { id: true, sex: true, category: true, status: true, birthType: true, lotId: true },
     })
     if (!animal) return { success: false, error: 'Animal não encontrado' }
 
@@ -198,6 +233,16 @@ export async function transferAnimalToLot(
     await prisma.animal.update({
       where: { id: parsed.data.animalId },
       data:  { lotId: parsed.data.lotId, category: newCategory },
+    })
+
+    auditUpdate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Animal',
+      entityId: parsed.data.animalId,
+      before:   { lotId: animal.lotId },
+      after:    { lotId: parsed.data.lotId },
+      metadata: { previousLotId: animal.lotId, targetLotId: parsed.data.lotId },
     })
 
     revalidatePath('/animals')
@@ -271,6 +316,19 @@ export async function addAnimalPhoto(
       return created
     })
 
+    auditCreate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'AnimalPhoto',
+      entityId: photo.id,
+      metadata: {
+        source:   'web',
+        animalId: parsed.data.animalId,
+        fileSize: parsed.data.sizeKb,
+        fileName: parsed.data.url.split('/').pop() ?? parsed.data.url,
+      },
+    })
+
     revalidatePath(`/animals/${parsed.data.animalId}`)
 
     return { success: true, data: { id: photo.id } }
@@ -338,6 +396,14 @@ export async function deleteAnimalPhoto(
       photo.thumbnailUrl ? deleteFile(photo.thumbnailUrl) : Promise.resolve(),
     ])
 
+    auditDelete({
+      farmId,
+      userId:   session.user.id,
+      entity:   'AnimalPhoto',
+      entityId: photoId,
+      before:   { photoUrl: photo.url, animalId: photo.animalId },
+    })
+
     revalidatePath(`/animals/${photo.animalId}`)
 
     return { success: true, data: undefined }
@@ -373,13 +439,23 @@ export async function addWeightRecord(
     const guard = canRegisterWeight(animal)
     if (!guard.allowed) return { success: false, error: guard.reason }
 
-    await prisma.weightRecord.create({
+    const weightRecord = await prisma.weightRecord.create({
       data: {
         animalId:   parsed.data.animalId,
         weightKg:   parsed.data.weightKg,
         measuredAt: parsed.data.measuredAt,
         notes:      parsed.data.notes ?? null,
       },
+      select: { id: true },
+    })
+
+    auditCreate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'WeightRecord',
+      entityId: weightRecord.id,
+      after:    { weight: parsed.data.weightKg, recordedAt: parsed.data.measuredAt },
+      metadata: { source: 'web' },
     })
 
     revalidatePath(`/animals/${parsed.data.animalId}`)
@@ -431,6 +507,16 @@ export async function deactivateAnimal(
         exitReason: reason ?? null,
         lotId:      null,   // Remove do lote ao sair
       },
+    })
+
+    auditDeactivate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Animal',
+      entityId: animalId,
+      before:   { status: animal.status },
+      after:    { status },
+      metadata: { source: 'web' },
     })
 
     revalidatePath('/animals')

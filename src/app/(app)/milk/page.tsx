@@ -8,10 +8,11 @@ import { History }     from 'lucide-react'
 
 import { getDailyMilkSummary }   from '@/modules/milk/queries'
 import { MilkDailySummary }      from '@/modules/milk/components/milk-daily-summary'
-import { MilkQuickRegister }     from '@/modules/milk/components/milk-quick-register'
 import { PageHeader }            from '@/components/shared/page-header'
 import { SectionCard }           from '@/components/shared/section-card'
+import { Button }                from '@/components/ui/button'
 import { formatDate }            from '@/lib/utils'
+import { MilkIcon }              from 'lucide-react'
 import MilkLoading               from './loading'
 
 // ─── Metadata ──────────────────────────────────────────────────
@@ -44,26 +45,22 @@ async function MilkDashboardContent({ farmId }: { farmId: string }) {
         <MilkDailySummary summary={summary} />
       </SectionCard>
 
-      {/* Registro rápido */}
-      <MilkQuickRegister farmId={farmId} />
+      {/* Botão principal → form completo com seleção de participantes */}
+      <Button asChild size="lg" className="w-full h-13 text-base font-semibold gap-2">
+        <Link href="/milk/new">
+          <MilkIcon className="size-5" />
+          Registrar Ordenha
+        </Link>
+      </Button>
 
-      {/* Links de ação */}
-      <div className="grid grid-cols-2 gap-3">
-        <Link
-          href="/milk/new"
-          className="rounded-xl border border-dashed border-primary/40 p-4 flex flex-col items-center gap-2 text-primary hover:bg-primary/5 transition-colors text-center"
-        >
-          <span className="text-2xl">🥛</span>
-          <span className="text-sm font-medium">Formulário completo</span>
-        </Link>
-        <Link
-          href="/milk/history"
-          className="rounded-xl border border-dashed border-border p-4 flex flex-col items-center gap-2 text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors text-center"
-        >
-          <History className="size-6" />
-          <span className="text-sm font-medium">Ver histórico</span>
-        </Link>
-      </div>
+      {/* Link histórico */}
+      <Link
+        href="/milk/history"
+        className="rounded-xl border border-dashed border-border p-4 flex items-center justify-center gap-2 text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors"
+      >
+        <History className="size-5" />
+        <span className="text-sm font-medium">Ver histórico completo</span>
+      </Link>
     </div>
   )
 }

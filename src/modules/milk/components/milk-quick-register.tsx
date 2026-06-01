@@ -89,10 +89,11 @@ export function MilkQuickRegister({ farmId }: MilkQuickRegisterProps) {
         addToQueue({
           farmId,
           shift,
-          date:        today,
+          date:           today,
           totalLiters,
           milkingCows,
-          notes:       null,
+          notes:          null,
+          participantIds: null,
         })
         toast({
           title:       'Salvo offline',

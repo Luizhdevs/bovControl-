@@ -10,6 +10,7 @@ import {
   canMoveToLot,
   shouldUpgradeToCowByLot,
 } from '@/modules/shared/domain/animal-rules'
+import { auditCreate, auditUpdate, auditDeactivate } from '@/lib/audit'
 
 import {
   createLotSchema,
@@ -56,6 +57,19 @@ export async function createLot(
       select: { id: true },
     })
 
+    auditCreate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Lot',
+      entityId: lot.id,
+      after: {
+        name:        parsed.data.name,
+        type:        parsed.data.type,
+        maxCapacity: parsed.data.maxCapacity ?? null,
+        pastureId:   parsed.data.pastureId   ?? null,
+      },
+    })
+
     revalidatePath('/lots')
 
     return { success: true, data: { id: lot.id } }
@@ -85,7 +99,7 @@ export async function updateLot(
 
     const existing = await prisma.lot.findFirst({
       where:  { id: lotId, farmId },
-      select: { id: true },
+      select: { id: true, name: true, type: true, maxCapacity: true, pastureId: true, observations: true },
     })
     if (!existing) return { success: false, error: 'Lote não encontrado' }
 
@@ -107,6 +121,16 @@ export async function updateLot(
         pastureId:    parsed.data.pastureId    ?? undefined,
         observations: parsed.data.observations ?? undefined,
       },
+    })
+
+    const { id: _id, ...beforeFields } = existing
+    auditUpdate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Lot',
+      entityId: lotId,
+      before:   beforeFields,
+      after:    parsed.data,
     })
 
     revalidatePath('/lots')
@@ -133,7 +157,7 @@ export async function deactivateLot(
 
     const lot = await prisma.lot.findFirst({
       where:  { id: lotId, farmId },
-      select: { id: true, _count: { select: { animals: { where: { status: 'ACTIVE' } } } } },
+      select: { id: true, isActive: true, _count: { select: { animals: { where: { status: 'ACTIVE' } } } } },
     })
     if (!lot) return { success: false, error: 'Lote não encontrado' }
 
@@ -147,6 +171,15 @@ export async function deactivateLot(
     await prisma.lot.update({
       where: { id: lotId },
       data:  { isActive: false },
+    })
+
+    auditDeactivate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Lot',
+      entityId: lotId,
+      before:   { isActive: lot.isActive },
+      after:    { isActive: false },
     })
 
     revalidatePath('/lots')
@@ -188,7 +221,7 @@ export async function moveAnimalToLot(
     // Carrega animal para verificar guards
     const animal = await prisma.animal.findFirst({
       where:  { id: parsed.data.animalId, farmId },
-      select: { id: true, sex: true, category: true, status: true, birthType: true, lotId: true },
+      select: { id: true, sex: true, category: true, status: true, birthType: true, lotId: true, milkStatus: true },
     })
     if (!animal) return { success: false, error: 'Animal não encontrado' }
 
@@ -203,7 +236,7 @@ export async function moveAnimalToLot(
     if (parsed.data.targetLotId) {
       targetLot = await prisma.lot.findFirst({
         where:  { id: parsed.data.targetLotId, farmId, isActive: true },
-        select: { type: true },
+        select: { type: true, id: true },
       })
       if (!targetLot) return { success: false, error: 'Lote de destino não encontrado ou inativo' }
     }
@@ -214,9 +247,45 @@ export async function moveAnimalToLot(
       newCategory = 'COW'
     }
 
+    // Resolve milkStatus automático baseado no tipo do lote de destino
+    const farmSettings = await prisma.farmSettings.findUnique({
+      where:  { farmId },
+      select: { autoUpdateMilkStatus: true },
+    })
+    let newMilkStatus = animal.milkStatus
+    if (farmSettings?.autoUpdateMilkStatus ?? true) {
+      if (!parsed.data.targetLotId) {
+        newMilkStatus = 'NA'
+      } else if (targetLot?.type === 'LACTATING') {
+        newMilkStatus = 'LACTATING'
+      } else if (targetLot?.type === 'DRY' || targetLot?.type === 'MATERNITY') {
+        newMilkStatus = 'DRY'
+      } else if (targetLot?.type === 'HEIFER') {
+        newMilkStatus = 'HEIFER'
+      }
+    }
+
     await prisma.animal.update({
       where: { id: parsed.data.animalId },
-      data:  { lotId: parsed.data.targetLotId, category: newCategory },
+      data:  { lotId: parsed.data.targetLotId, category: newCategory, milkStatus: newMilkStatus },
+    })
+
+    auditUpdate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Animal',
+      entityId: parsed.data.animalId,
+      before:   { lotId: animal.lotId },
+      after:    { lotId: parsed.data.targetLotId },
+      metadata: {
+        previousLotId: animal.lotId,
+        targetLotId:   parsed.data.targetLotId,
+        reason:        'manual_transfer',
+        ...(newMilkStatus !== animal.milkStatus && {
+          milkStatusBefore: animal.milkStatus,
+          milkStatusAfter:  newMilkStatus,
+        }),
+      },
     })
 
     // Revalida lote de origem (se existia)

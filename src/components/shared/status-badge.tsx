@@ -133,6 +133,8 @@ const LOT_TYPE_COLORS: Record<string, string> = {
   CALF:      'border-green-500/40  bg-green-500/10  text-green-400',
   FATTENING: 'border-orange-500/40 bg-orange-500/10 text-orange-400',
   MIXED:     'border-border        bg-muted         text-muted-foreground',
+  MATERNITY: 'border-pink-500/40   bg-pink-500/10   text-pink-400',
+  BREEDING:  'border-red-500/40    bg-red-500/10    text-red-400',
 }
 
 interface LotTypeBadgeProps {

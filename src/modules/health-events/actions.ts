@@ -4,7 +4,7 @@ import { revalidatePath }       from 'next/cache'
 import { prisma }               from '@/lib/prisma'
 import { auth }                 from '@/lib/auth'
 import { requireFarmAccess }    from '@/lib/permissions'
-import { auditLog }             from '@/lib/audit'
+import { auditLog, auditUpdate } from '@/lib/audit'
 import {
   createHealthEventSchema,
   updateHealthEventSchema,
@@ -99,7 +99,10 @@ export async function updateHealthEvent(
 
     const existing = await prisma.healthEvent.findFirst({
       where:  { id: eventId, animal: { farmId } },
-      select: { id: true, animalId: true, type: true, description: true },
+      select: {
+        id: true, animalId: true, type: true, description: true,
+        medication: true, cost: true, occurredAt: true, resolved: true, notes: true,
+      },
     })
     if (!existing) return { success: false, error: 'Evento não encontrado' }
 
@@ -112,13 +115,14 @@ export async function updateHealthEvent(
       },
     })
 
+    const { id: _id, animalId: _animalId, ...beforeFields } = existing
     auditLog({
       farmId,
       userId:   session.user.id,
       action:   'UPDATE',
       entity:   'HealthEvent',
       entityId: eventId,
-      before:   { type: existing.type, description: existing.description },
+      before:   beforeFields,
       after:    parsed.data,
     })
 
@@ -145,13 +149,22 @@ export async function resolveHealthEvent(
 
     const existing = await prisma.healthEvent.findFirst({
       where:  { id: eventId, animal: { farmId } },
-      select: { id: true, animalId: true },
+      select: { id: true, animalId: true, resolved: true },
     })
     if (!existing) return { success: false, error: 'Evento não encontrado' }
 
     await prisma.healthEvent.update({
       where: { id: eventId },
       data:  { resolved: true },
+    })
+
+    auditUpdate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'HealthEvent',
+      entityId: eventId,
+      before:   { resolved: existing.resolved },
+      after:    { resolved: true },
     })
 
     revalidateHealthPaths(existing.animalId)

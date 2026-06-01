@@ -128,6 +128,7 @@ export async function registerFeedSession(
         totalCost,
         animalCount,
       },
+      metadata: { source: 'web' },
     })
 
     revalidatePath('/feed')
@@ -277,7 +278,7 @@ export async function updateFeedType(
 
     const existing = await prisma.feedType.findFirst({
       where:  { id: feedTypeId, farmId },
-      select: { id: true },
+      select: { id: true, name: true, brand: true, weightPerBagKg: true, pricePerBag: true, proteinPercent: true, active: true },
     })
     if (!existing) {
       return { success: false, error: 'Tipo de ração não encontrado', kind: 'domain' }
@@ -295,12 +296,14 @@ export async function updateFeedType(
       },
     })
 
+    const { id: _id, ...beforeFields } = existing
     auditLog({
       farmId,
       userId:   session.user.id,
       action:   'UPDATE',
       entity:   'FeedType',
       entityId: feedTypeId,
+      before:   beforeFields,
       after:    parsed.data,
     })
 
@@ -345,6 +348,7 @@ export async function toggleFeedTypeActive(
       action:   'UPDATE',
       entity:   'FeedType',
       entityId: feedTypeId,
+      before:   { active: existing.active },
       after:    { active: updated.active },
     })
 

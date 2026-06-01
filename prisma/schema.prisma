@@ -93,8 +93,34 @@ model Farm {
   milkingSessions  MilkingSession[]
   feedTypes        FeedType[]
   feedSessions     FeedSession[]
+  settings         FarmSettings?
 
   @@map("farms")
+}
+
+// ─── CONFIGURAÇÕES DA FAZENDA ──────────────────────────────
+// Parâmetros operacionais configuráveis sem alterar código.
+// Criado automaticamente no primeiro acesso via getOrCreateFarmSettings().
+
+model FarmSettings {
+  id                     String   @id @default(cuid())
+  farmId                 String   @unique
+
+  // Lote principal de produção leiteira (escolha explícita do operador)
+  mainProductionLotId    String?
+
+  // Feature flags operacionais
+  enableMilkParticipants Boolean  @default(true)   // habilita seleção de participantes da ordenha
+  autoUpdateMilkStatus   Boolean  @default(true)   // atualiza milkStatus ao mover animal de lote
+  useEstimatedMilkPerCow Boolean  @default(true)   // distribui litros proporcionalmente por vaca
+
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  farm              Farm  @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  mainProductionLot Lot?  @relation("MainProductionLot", fields: [mainProductionLotId], references: [id])
+
+  @@map("farm_settings")
 }
 
 model FarmUser {
@@ -133,6 +159,7 @@ model Animal {
   motherId     String?
   fatherId     String?
   lotId        String?
+  milkStatus   MilkStatus   @default(NA)
   observations String?      @db.Text
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -148,13 +175,14 @@ model Animal {
   totalFeedConsumedKg Float @default(0)
   estimatedFeedCost   Float @default(0)
 
-  photos           AnimalPhoto[]
-  weightRecords    WeightRecord[]
-  healthEvents     HealthEvent[]
-  milkRecords      MilkRecord[]
-  reproductions    Reproduction[]
-  alerts           Alert[]
-  feedConsumptions AnimalFeedConsumption[]
+  photos              AnimalPhoto[]
+  weightRecords       WeightRecord[]
+  healthEvents        HealthEvent[]
+  milkRecords         MilkRecord[]
+  milkParticipations  MilkingSessionParticipant[]
+  reproductions       Reproduction[]
+  alerts              Alert[]
+  feedConsumptions    AnimalFeedConsumption[]
 
   @@unique([farmId, tag])
   @@index([farmId, status])
@@ -231,6 +259,7 @@ model Lot {
   pasture Pasture? @relation(fields: [pastureId], references: [id])
   animals Animal[]
   feedSessions FeedSession[]
+  farmSettingsAsMain FarmSettings[] @relation("MainProductionLot")
 
   @@unique([farmId, name])
   @@map("lots")
@@ -313,12 +342,35 @@ model MilkingSession {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  farm Farm @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  farm         Farm                        @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  participants MilkingSessionParticipant[]
 
   // Uma fazenda só pode ter 1 sessão por turno por dia
   @@unique([farmId, shift, date])
   @@index([farmId, date])
   @@map("milking_sessions")
+}
+
+// ─── PARTICIPANTES DA ORDENHA ──────────────────────────────
+// Registra quais vacas participaram de cada sessão.
+// liters = null enquanto não há produção individual real.
+// isEstimated = true enquanto o valor é calculado por distribuição.
+
+model MilkingSessionParticipant {
+  id             String   @id @default(cuid())
+  sessionId      String
+  animalId       String
+  liters         Float?
+  isEstimated    Boolean  @default(true)
+  idempotencyKey String?  @unique @map("idempotency_key")
+  createdAt      DateTime @default(now())
+
+  session MilkingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  animal  Animal         @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, animalId])
+  @@index([animalId, createdAt])
+  @@map("milking_session_participants")
 }
 
 // ─── NUTRIÇÃO / RAÇÃO ─────────────────────────────────────
@@ -500,6 +552,16 @@ enum LotType {
   CALF
   FATTENING
   MIXED
+  MATERNITY
+  BREEDING
+}
+
+enum MilkStatus {
+  LACTATING      // vaca em produção ativa
+  DRY            // vaca seca
+  DRY_PREGNANT   // vaca seca e gestante
+  HEIFER         // novilha (ainda não pariu)
+  NA             // não se aplica (machos, bezerros, etc.)
 }
 
 enum HealthEventType {

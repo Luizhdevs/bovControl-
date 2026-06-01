@@ -13,7 +13,17 @@ import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
 import type { Prisma } from '@prisma/client'
 
-export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE'
+export type AuditAction =
+  | 'CREATE'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'DEACTIVATE'
+  | 'ACTIVATE'
+  | 'SOFT_DELETE'
+  | 'EXPORT'
+
+/** Origem da ação: interface web, fila offline ou SyncProvider. */
+export type AuditSource = 'web' | 'offline' | 'sync'
 
 interface AuditEntry {
   farmId:    string
@@ -39,3 +49,12 @@ export function auditLog(entry: AuditEntry): void {
       error:    e instanceof Error ? e.message : String(e),
     }))
 }
+
+// ─── Helpers tipados por ação ──────────────────────────────
+
+type AuditEntryWithoutAction = Omit<AuditEntry, 'action'>
+
+export function auditCreate(entry: AuditEntryWithoutAction):     void { auditLog({ ...entry, action: 'CREATE'     }) }
+export function auditUpdate(entry: AuditEntryWithoutAction):     void { auditLog({ ...entry, action: 'UPDATE'     }) }
+export function auditDelete(entry: AuditEntryWithoutAction):     void { auditLog({ ...entry, action: 'DELETE'     }) }
+export function auditDeactivate(entry: AuditEntryWithoutAction): void { auditLog({ ...entry, action: 'DEACTIVATE' }) }

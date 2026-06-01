@@ -45,6 +45,12 @@ export async function registerMilkingSession(
     const date = new Date(parsed.data.date)
     date.setUTCHours(12, 0, 0, 0)   // Meio-dia UTC — evita ambiguidade de fuso
 
+    // Verifica se já existe sessão para determinar action correta no audit
+    const existingSession = await prisma.milkingSession.findFirst({
+      where:  { farmId, shift: parsed.data.shift, date },
+      select: { id: true, totalLiters: true, milkingCows: true },
+    })
+
     // UPSERT: cria ou atualiza sessão do mesmo turno/dia
     const result = await prisma.milkingSession.upsert({
       where: {
@@ -74,14 +80,21 @@ export async function registerMilkingSession(
     auditLog({
       farmId,
       userId:   session.user.id,
-      action:   'CREATE',
+      action:   existingSession ? 'UPDATE' : 'CREATE',
       entity:   'MilkingSession',
       entityId: result.id,
+      ...(existingSession && {
+        before: {
+          totalLiters: existingSession.totalLiters,
+          milkingCows: existingSession.milkingCows,
+        },
+      }),
       after: {
         shift:       parsed.data.shift,
         totalLiters: parsed.data.totalLiters,
         milkingCows: parsed.data.milkingCows,
       },
+      metadata: { source: 'web' },
     })
 
     revalidatePath('/milk')
@@ -134,6 +147,222 @@ export async function deleteMilkingSession(
   } catch (error) {
     console.error('[deleteMilkingSession]', error)
     return { success: false, error: 'Erro ao excluir sessão.', kind: 'network' }
+  }
+}
+
+// ─── Registrar sessão + participantes em transaction única ────
+
+/**
+ * Registra (ou atualiza) a sessão de ordenha e grava os participantes
+ * em uma única $transaction — garante consistência e idempotência offline.
+ *
+ * Se participants for undefined, grava só a sessão (compatibilidade).
+ * Se participants for [], remove todos os participantes anteriores.
+ */
+export async function registerMilkingSessionWithParticipants(
+  farmId:               string,
+  rawData:              unknown,
+  participantAnimalIds?: string[],
+  source:               'web' | 'sync' = 'web',
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado', kind: 'domain' }
+
+    const parsed = milkingSessionSchema.safeParse(rawData)
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.errors[0]!.message, kind: 'domain' }
+    }
+
+    await requireFarmAccess(session.user.id, farmId, 'WORKER')
+
+    // Idempotência: se a sessão já existe pelo key, retorna sem duplicar
+    if (parsed.data.idempotencyKey) {
+      const existingByKey = await prisma.milkingSession.findUnique({
+        where:  { idempotencyKey: parsed.data.idempotencyKey },
+        select: { id: true },
+      })
+      if (existingByKey) return { success: true, data: { id: existingByKey.id } }
+    }
+
+    // Normaliza data para meio-dia UTC (evita offset de fuso)
+    const rawDate    = parsed.data.date
+    const normalDate = new Date(
+      Date.UTC(rawDate.getFullYear(), rawDate.getMonth(), rawDate.getDate(), 12, 0, 0),
+    )
+
+    const litersPerCow = participantAnimalIds && participantAnimalIds.length > 0
+      ? Math.round((parsed.data.totalLiters / participantAnimalIds.length) * 10) / 10
+      : null
+
+    // Garante que milkingCows reflete os participantes reais (se fornecidos)
+    const milkingCows = participantAnimalIds !== undefined
+      ? participantAnimalIds.length
+      : parsed.data.milkingCows
+
+    // Verifica se já existe sessão para determinar action correta no audit
+    const existingSessionWP = await prisma.milkingSession.findFirst({
+      where:  { farmId, shift: parsed.data.shift, date: normalDate },
+      select: { id: true, totalLiters: true, milkingCows: true },
+    })
+
+    const milkSession = await prisma.$transaction(async (tx) => {
+      const s = await tx.milkingSession.upsert({
+        where:  { farmId_shift_date: { farmId, shift: parsed.data.shift, date: normalDate } },
+        create: {
+          farmId,
+          shift:          parsed.data.shift,
+          date:           normalDate,
+          totalLiters:    parsed.data.totalLiters,
+          milkingCows,
+          notes:          parsed.data.notes ?? null,
+          idempotencyKey: parsed.data.idempotencyKey ?? null,
+        },
+        update: {
+          totalLiters: parsed.data.totalLiters,
+          milkingCows,
+          notes:       parsed.data.notes ?? null,
+        },
+        select: { id: true },
+      })
+
+      if (participantAnimalIds !== undefined) {
+        // Remove participantes não incluídos nesta atualização
+        await tx.milkingSessionParticipant.deleteMany({
+          where: {
+            sessionId: s.id,
+            ...(participantAnimalIds.length > 0
+              ? { animalId: { notIn: participantAnimalIds } }
+              : {}),
+          },
+        })
+
+        // Upsert participantes novos
+        if (participantAnimalIds.length > 0 && litersPerCow !== null) {
+          await tx.milkingSessionParticipant.createMany({
+            data: participantAnimalIds.map((animalId) => ({
+              sessionId:   s.id,
+              animalId,
+              liters:      litersPerCow,
+              isEstimated: true,
+            })),
+            skipDuplicates: true,
+          })
+          // Atualiza litros de participantes que já existiam (valor pode ter mudado)
+          await tx.milkingSessionParticipant.updateMany({
+            where: { sessionId: s.id },
+            data:  { liters: litersPerCow, isEstimated: true },
+          })
+        }
+      }
+
+      return s
+    })
+
+    auditLog({
+      farmId,
+      userId:   session.user.id,
+      action:   existingSessionWP ? 'UPDATE' : 'CREATE',
+      entity:   'MilkingSession',
+      entityId: milkSession.id,
+      ...(existingSessionWP && {
+        before: {
+          totalLiters: existingSessionWP.totalLiters,
+          milkingCows: existingSessionWP.milkingCows,
+        },
+      }),
+      after: {
+        shift:        parsed.data.shift,
+        totalLiters:  parsed.data.totalLiters,
+        milkingCows,
+        participants: participantAnimalIds?.length ?? 0,
+      },
+      metadata: { source },
+    })
+
+    revalidatePath('/milk')
+    revalidatePath('/')
+
+    return { success: true, data: { id: milkSession.id } }
+  } catch (error) {
+    console.error('[registerMilkingSessionWithParticipants]', error)
+    return { success: false, error: 'Erro ao registrar ordenha.', kind: 'network' }
+  }
+}
+
+// ─── Registrar participantes de uma sessão ────────────────────
+
+export type ParticipantInput = {
+  animalId:      string
+  liters?:       number
+  idempotencyKey?: string
+}
+
+/**
+ * Grava os participantes de uma sessão de ordenha.
+ * Para cada animalId, calcula liters = totalLiters / count(participantes).
+ * Idempotente: já existindo, faz upsert silencioso.
+ */
+export async function registerSessionParticipants(
+  sessionId:    string,
+  farmId:       string,
+  animalIds:    string[],
+  totalLiters:  number,
+): Promise<ActionResult<void>> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado', kind: 'domain' }
+
+    await requireFarmAccess(session.user.id, farmId, 'WORKER')
+
+    // Valida que a sessão pertence à fazenda
+    const milkSession = await prisma.milkingSession.findFirst({
+      where:  { id: sessionId, farmId },
+      select: { id: true },
+    })
+    if (!milkSession) return { success: false, error: 'Sessão não encontrada', kind: 'domain' }
+
+    if (animalIds.length === 0) {
+      // Remove todos os participantes da sessão
+      await prisma.milkingSessionParticipant.deleteMany({ where: { sessionId } })
+      return { success: true, data: undefined }
+    }
+
+    const litersPerCow = totalLiters / animalIds.length
+
+    await prisma.$transaction(
+      animalIds.map((animalId) =>
+        prisma.milkingSessionParticipant.upsert({
+          where:  { sessionId_animalId: { sessionId, animalId } },
+          create: { sessionId, animalId, liters: litersPerCow, isEstimated: true },
+          update: { liters: litersPerCow, isEstimated: true },
+        }),
+      ),
+    )
+
+    // Remove participantes desmarcados (que estavam antes mas não estão na lista atual)
+    await prisma.milkingSessionParticipant.deleteMany({
+      where: {
+        sessionId,
+        animalId: { notIn: animalIds },
+      },
+    })
+
+    auditLog({
+      farmId,
+      userId:   session.user.id,
+      action:   'UPDATE',
+      entity:   'MilkingSession',
+      entityId: sessionId,
+      after:    { participants: animalIds.length, litersPerCow },
+    })
+
+    revalidatePath('/milk')
+
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[registerSessionParticipants]', error)
+    return { success: false, error: 'Erro ao gravar participantes.', kind: 'network' }
   }
 }
 

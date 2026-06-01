@@ -81,6 +81,16 @@ export const LOT_TYPE_LABELS: Record<string, string> = {
   CALF:      'Bezerros',
   FATTENING: 'Engorda',
   MIXED:     'Misto',
+  MATERNITY: 'Maternidade',
+  BREEDING:  'Reprodutores',
+}
+
+export const MILK_STATUS_LABELS: Record<string, string> = {
+  LACTATING:    'Em lactação',
+  DRY:          'Seca',
+  DRY_PREGNANT: 'Seca/Gestante',
+  HEIFER:       'Novilha',
+  NA:           '—',
 }
 
 // ─── Origem do animal ──────────────────────────────────────

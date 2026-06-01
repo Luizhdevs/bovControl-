@@ -7,9 +7,13 @@ import { getLotById, getAnimalsAvailableForLot } from '@/modules/lots/queries'
 import { LotAnimalsList }      from '@/modules/lots/components/lot-animals-list'
 import { LotPageActions }      from '@/modules/lots/components/lot-page-actions'
 import { LotCapacityIndicator } from '@/modules/lots/components/lot-capacity-indicator'
+import { getEntityHistory }    from '@/modules/audit/queries'
+import { AuditTimeline }       from '@/modules/audit/components/audit-timeline'
 import { PageHeader }          from '@/components/shared/page-header'
 import { SectionCard, InfoRow, InfoRows } from '@/components/shared/section-card'
 import { LotTypeBadge }        from '@/components/shared/status-badge'
+import Link                    from 'next/link'
+import { ClipboardList }       from 'lucide-react'
 
 // ─── Metadata dinâmica ─────────────────────────────────────
 
@@ -47,10 +51,13 @@ export default async function LotDetailPage({
   if (!activeFarm) redirect('/onboarding')
   const { farmId, role } = activeFarm
 
+  const canViewAudit = role !== 'VIEWER'
+
   // Carrega dados em paralelo
-  const [lot, availableAnimals] = await Promise.all([
+  const [lot, availableAnimals, auditHistory] = await Promise.all([
     getLotById(id, farmId),
     getAnimalsAvailableForLot(farmId, id),
+    canViewAudit ? getEntityHistory(id, farmId, 15) : Promise.resolve([]),
   ])
 
   if (!lot) notFound()
@@ -176,6 +183,25 @@ export default async function LotDetailPage({
           />
         </div>
       </SectionCard>
+
+      {/* Histórico de auditoria (OWNER / MANAGER) */}
+      {canViewAudit && (
+        <SectionCard
+          title="Histórico"
+          subtitle={auditHistory.length > 0 ? `${auditHistory.length} registro${auditHistory.length !== 1 ? 's' : ''}` : undefined}
+          action={
+            <Link href="/audit?entity=Lot" className="text-xs text-primary hover:underline flex items-center gap-1">
+              <ClipboardList className="size-3" />
+              Ver auditoria
+            </Link>
+          }
+          noPadding
+        >
+          <div className="px-4 pb-2">
+            <AuditTimeline logs={auditHistory} showUser={['OWNER', 'MANAGER'].includes(role)} />
+          </div>
+        </SectionCard>
+      )}
 
       {/* Ações interativas (Client Component) */}
       <LotPageActions

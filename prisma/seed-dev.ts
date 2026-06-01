@@ -1,958 +1,189 @@
 /**
- * prisma/seed-dev.ts
- *
- * Seed realístico para desenvolvimento — Fazenda Saldanha
- *
- * Gera ~315 animais + 60 dias de produção de leite + histórico
- * completo de pesagens, eventos de saúde, reprodução e alertas.
- *
- * USO:
- *   npm run db:seed:dev        → limpa dados + re-popula
- *   npm run db:reset:dev       → apenas limpa (sem re-popular)
- *
- * ⚠️  NUNCA executar em produção.
- *     Só roda se NODE_ENV = development | test.
+ * prisma/seed-dev.ts - Fazenda Perdigao/MG (Sprint 7.1)
+ * NUNCA executar em producao.
  */
 
-import { PrismaClient, type Prisma } from '@prisma/client'
-import { hash }                       from 'bcryptjs'
-import { subDays, addDays, addHours, startOfDay } from 'date-fns'
-import { randomUUID }                 from 'node:crypto'
-
-// ─── Guarda de ambiente ────────────────────────────────────
+import { PrismaClient } from '@prisma/client'
+import { hash }         from 'bcryptjs'
+import { subDays, startOfDay } from 'date-fns'
+import { randomUUID }   from 'node:crypto'
 
 const env = process.env.NODE_ENV ?? 'development'
 if (!['development', 'test'].includes(env)) {
-  console.error(`❌  seed-dev.ts recusou rodar em NODE_ENV="${env}".`)
-  console.error('    Só permitido em development ou test.')
+  console.error('seed-dev.ts recusou rodar em producao.')
   process.exit(1)
 }
 
-// ─── Cliente e constantes ──────────────────────────────────
+const prisma = new PrismaClient()
+const NOW    = new Date()
+const FARM_ID = 'farm_perdigao_dev'
 
-const prisma  = new PrismaClient()
-const FARM_ID = 'farm_saldanha'
-const NOW     = new Date()
-
-// ─── Helpers ───────────────────────────────────────────────
-
-/** Número aleatório entre min e max, arredondado a `dec` casas. */
 function rnd(min: number, max: number, dec = 1): number {
-  const f = 10 ** dec
-  return Math.round((Math.random() * (max - min) + min) * f) / f
+  const v = min + Math.random() * (max - min)
+  return Math.round(v * 10 ** dec) / 10 ** dec
 }
 
-/** Elemento aleatório de um array. */
-function pick<T>(arr: readonly T[]): T {
+function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!
 }
 
-/** Retorna true com probabilidade `p`. */
-function maybe(p: number): boolean {
-  return Math.random() < p
+function daysBefore(n: number): Date {
+  return new Date(NOW.getTime() - n * 86_400_000)
 }
 
-/** Formata número como tag BOV-XXXX. */
-function padTag(n: number): string {
-  return `BOV-${String(n).padStart(4, '0')}`
+let tagCounter = 1
+function nextTag(): string {
+  return `BOV-${String(tagCounter++).padStart(4, '0')}`
 }
 
-// ─── Dados de referência ───────────────────────────────────
-
-const COW_NAMES = [
-  'Mimosa', 'Estrela', 'Bonita', 'Serena', 'Esperança', 'Pintada',
-  'Branquinha', 'Fofinha', 'Maravilha', 'Florzinha', 'Manteiga', 'Serrana',
-  'Vitória', 'Aurora', 'Brilhante', 'Carinha', 'Docinha', 'Graciosa',
-  'Linda', 'Meiga', 'Rainha', 'Saudade', 'Ternura', 'Xodó', 'Alegria',
-  'Caprichosa', 'Delicada', 'Famosa', 'Honesta', 'Jovial', 'Laranjinha',
-  'Morena', 'Novinha', 'Orgulhosa', 'Perfeita', 'Querida', 'Robusta',
-  'Suave', 'Travessa', 'Única', 'Valente', 'Zelosa', 'Bênção', 'Cristal',
-  'Danada', 'Esbelta', 'Formosa', 'Harmonia', 'Imperial', 'Joia',
-  'Kécia', 'Leitosa', 'Mansinha', 'Nativa', 'Obediente', 'Paçoca',
-  'Quitéria', 'Rosinha', 'Saltitante', 'Tímida', 'Uberlândia', 'Venância',
-] as const
-
-const BULL_NAMES = ['Tornado', 'Trovão', 'Relâmpago', 'Bravo', 'Campeão'] as const
-
-const BREEDS_DAIRY  = ['Girolando', 'Holandesa', 'Gir Leiteiro', 'Girolando 5/8'] as const
-const BREEDS_BEEF   = ['Nelore', 'Angus', 'Brahman', 'Nelore Mocho'] as const
-const BREEDS_MIXED  = ['Girolando', 'Mestiço', 'Simental'] as const
-
-const HEALTH_MEDS   = ['Penicilina G', 'Oxitocina', 'Flunixin meglumine', 'Dexametasona',
-                        'Enrofloxacina', 'Ceftiofur', 'Meloxicam'] as const
-const DEWORM_MEDS   = ['Ivermectina 1%', 'Doramectina', 'Fenbendazol', 'Albendazol'] as const
-const SEMEN_NAMES   = ['Sêmen Girolando A2', 'Sêmen Holandês Holstein', 'Sêmen Nelore Elite',
-                        'Sêmen Gir Leiteiro 1A', 'Sêmen Girolando FIV'] as const
-const DISEASE_DESCS = [
-  'Mastite subclínica — CMT positivo, tratamento intramamário',
-  'Tristeza parasitária — febre alta, anorexia',
-  'Timpanismo gasoso — distensão ruminal aguda',
-  'Edema de úbere — pós-parto recente',
-  'Cetose subclínica — queda de produção pós-parto',
-  'Papilomatose — lesões verrugosas na pele',
-  'Diarréia neonatal — bezerro recém-nascido',
-] as const
-
-// ─── Main ──────────────────────────────────────────────────
+async function cleanDev() {
+  console.log('  Limpando dados antigos...')
+  await prisma.milkingSessionParticipant.deleteMany({ where: { session: { farmId: FARM_ID } } })
+  await prisma.milkingSession.deleteMany({ where: { farmId: FARM_ID } })
+  await prisma.milkRecord.deleteMany({ where: { farmId: FARM_ID } })
+  await prisma.alert.deleteMany({ where: { farmId: FARM_ID } })
+  await prisma.auditLog.deleteMany({ where: { farmId: FARM_ID } })
+  await prisma.reproduction.deleteMany({ where: { animal: { farmId: FARM_ID } } })
+  await prisma.healthEvent.deleteMany({ where: { animal: { farmId: FARM_ID } } })
+  await prisma.weightRecord.deleteMany({ where: { animal: { farmId: FARM_ID } } })
+  await prisma.animalPhoto.deleteMany({ where: { animal: { farmId: FARM_ID } } })
+  await prisma.animalFeedConsumption.deleteMany({ where: { animal: { farmId: FARM_ID } } })
+  await prisma.feedSession.deleteMany({ where: { farmId: FARM_ID } })
+  await prisma.feedType.deleteMany({ where: { farmId: FARM_ID } })
+  await prisma.animal.deleteMany({ where: { farmId: FARM_ID } })
+  await prisma.lot.deleteMany({ where: { farmId: FARM_ID } })
+  await prisma.pasture.deleteMany({ where: { farmId: FARM_ID } })
+  await prisma.farmSettings.deleteMany({ where: { farmId: FARM_ID } })
+  await prisma.invite.deleteMany({ where: { farmId: FARM_ID } })
+  await prisma.farmUser.deleteMany({ where: { farmId: FARM_ID } })
+  await prisma.farm.deleteMany({ where: { id: FARM_ID } })
+}
 
 async function main() {
-  console.log('🌱  Seed realístico BovControl iniciado...\n')
-
-  // ── 1. Usuários ────────────────────────────────────────
-  const pw = await hash('bovcontrol123', 10)
-
-  const [uAdmin, uManager, uWorker] = await Promise.all([
-    prisma.user.upsert({
-      where:  { email: 'admin@saldanha.com.br' },
-      update: {},
-      create: { name: 'Carlos Saldanha',  email: 'admin@saldanha.com.br',         passwordHash: pw },
-    }),
-    prisma.user.upsert({
-      where:  { email: 'gerente@saldanha.com.br' },
-      update: {},
-      create: { name: 'Marcos Ferreira',  email: 'gerente@saldanha.com.br',        passwordHash: pw },
-    }),
-    prisma.user.upsert({
-      where:  { email: 'funcionario@saldanha.com.br' },
-      update: {},
-      create: { name: 'João Silva',        email: 'funcionario@saldanha.com.br',   passwordHash: pw },
-    }),
-  ])
-  console.log('✅  Usuários: admin, gerente, funcionário')
-
-  // ── 2. Fazenda ─────────────────────────────────────────
-  const farm = await prisma.farm.upsert({
-    where:  { id: FARM_ID },
-    update: { name: 'Fazenda Saldanha', city: 'Uberaba', state: 'MG' },
-    create: { id: FARM_ID, name: 'Fazenda Saldanha', city: 'Uberaba', state: 'MG' },
-  })
-
-  await Promise.all([
-    prisma.farmUser.upsert({
-      where:  { farmId_userId: { farmId: farm.id, userId: uAdmin.id } },
-      update: {},
-      create: { farmId: farm.id, userId: uAdmin.id,   role: 'OWNER'   },
-    }),
-    prisma.farmUser.upsert({
-      where:  { farmId_userId: { farmId: farm.id, userId: uManager.id } },
-      update: {},
-      create: { farmId: farm.id, userId: uManager.id, role: 'MANAGER' },
-    }),
-    prisma.farmUser.upsert({
-      where:  { farmId_userId: { farmId: farm.id, userId: uWorker.id } },
-      update: {},
-      create: { farmId: farm.id, userId: uWorker.id,  role: 'WORKER'  },
-    }),
-  ])
-  console.log(`✅  Fazenda: ${farm.name} (${farm.id})`)
-
-  // ── 3. Limpeza de dados existentes do farm ─────────────
-  console.log('\n🧹  Limpando dados existentes...')
-
-  await prisma.milkRecord.deleteMany(     { where: { farmId: farm.id } })
-  await prisma.milkingSession.deleteMany( { where: { farmId: farm.id } })
-  await prisma.alert.deleteMany({          where: { farmId: farm.id } })
-  await prisma.feedSession.deleteMany({   where: { farmId: farm.id } })  // cascade → AnimalFeedConsumption
-  await prisma.feedType.deleteMany({      where: { farmId: farm.id } })
-
-  // Busca IDs para cascatear deletes das tabelas sem FK direta para farmId
-  const existingIds = (await prisma.animal.findMany({
-    where:  { farmId: farm.id },
-    select: { id: true },
-  })).map(a => a.id)
-
-  if (existingIds.length > 0) {
-    await prisma.weightRecord.deleteMany({ where: { animalId: { in: existingIds } } })
-    await prisma.healthEvent.deleteMany({  where: { animalId: { in: existingIds } } })
-    await prisma.reproduction.deleteMany({ where: { animalId: { in: existingIds } } })
-    await prisma.animalPhoto.deleteMany({  where: { animalId: { in: existingIds } } })
-  }
-
-  await prisma.animal.deleteMany({  where: { farmId: farm.id } })
-  await prisma.lot.deleteMany({     where: { farmId: farm.id } })
-  await prisma.pasture.deleteMany({ where: { farmId: farm.id } })
-  console.log('✅  Dados limpos')
-
-  // ── 4. Pastos ──────────────────────────────────────────
-  type PastureSeed = { id: string; farmId: string; name: string; areaHectares: number; grassType: string; maxCapacity: number }
-  const pastureData: PastureSeed[] = [
-    { id: randomUUID(), farmId: farm.id, name: 'Pasto A', areaHectares: 15.0, grassType: 'Braquiária', maxCapacity: 65 },
-    { id: randomUUID(), farmId: farm.id, name: 'Pasto B', areaHectares: 12.5, grassType: 'Tifton',      maxCapacity: 60 },
-    { id: randomUUID(), farmId: farm.id, name: 'Pasto C', areaHectares: 10.0, grassType: 'Braquiária', maxCapacity: 45 },
-    { id: randomUUID(), farmId: farm.id, name: 'Pasto D', areaHectares:  8.0, grassType: 'Napier',      maxCapacity: 70 },
-    { id: randomUUID(), farmId: farm.id, name: 'Pasto E', areaHectares:  5.5, grassType: 'Bermuda',     maxCapacity: 50 },
-  ]
-  await prisma.pasture.createMany({ data: pastureData })
-  const [pA, pB, pC, pD, pE] = pastureData as [PastureSeed, PastureSeed, PastureSeed, PastureSeed, PastureSeed]
-  console.log(`✅  Pastos: ${pastureData.length}`)
-
-  // ── 5. Lotes ───────────────────────────────────────────
-  type LotSeed = { id: string; farmId: string; name: string; type: 'LACTATING'|'DRY'|'HEIFER'|'CALF'|'FATTENING'|'MIXED'; maxCapacity: number; pastureId: string }
-  const lotData: LotSeed[] = [
-    { id: randomUUID(), farmId: farm.id, name: 'Curral de Leite 1', type: 'LACTATING', maxCapacity: 65, pastureId: pA.id },
-    { id: randomUUID(), farmId: farm.id, name: 'Curral de Leite 2', type: 'LACTATING', maxCapacity: 60, pastureId: pB.id },
-    { id: randomUUID(), farmId: farm.id, name: 'Lote Seco',          type: 'DRY',       maxCapacity: 25, pastureId: pC.id },
-    { id: randomUUID(), farmId: farm.id, name: 'Lote Novilhas 1',   type: 'HEIFER',    maxCapacity: 35, pastureId: pC.id },
-    { id: randomUUID(), farmId: farm.id, name: 'Lote Novilhas 2',   type: 'HEIFER',    maxCapacity: 35, pastureId: pD.id },
-    { id: randomUUID(), farmId: farm.id, name: 'Bezerreiro',         type: 'CALF',      maxCapacity: 50, pastureId: pE.id },
-    { id: randomUUID(), farmId: farm.id, name: 'Engorda',            type: 'FATTENING', maxCapacity: 70, pastureId: pD.id },
-    { id: randomUUID(), farmId: farm.id, name: 'Reprodutores',       type: 'MIXED',     maxCapacity: 10, pastureId: pA.id },
-  ]
-  await prisma.lot.createMany({ data: lotData })
-  const [lotLeite1, lotLeite2, lotSeco, lotNov1, lotNov2, lotBezerreiro, lotEngorda, lotReprod] = lotData as LotSeed[]
-  console.log(`✅  Lotes: ${lotData.length}`)
-
-  // ── 6. Animais ─────────────────────────────────────────
-  console.log('\n⏳  Gerando animais...')
-
-  let tag = 1
-  const animals: Prisma.AnimalCreateManyInput[] = []
-
-  // Função auxiliar para criar dados de animal
-  function mkAnimal(
-    overrides: Partial<Prisma.AnimalCreateManyInput> & {
-      sex: 'MALE'|'FEMALE'
-      category: 'COW'|'HEIFER'|'CALF'|'BULL'|'STEER'
-    },
-  ): Prisma.AnimalCreateManyInput {
-    return {
-      id:         randomUUID(),
-      farmId:     farm.id,
-      tag:        padTag(tag++),
-      breed:      'Mestiço',
-      status:     'ACTIVE',
-      purpose:    'DAIRY',
-      entryDate:  NOW,
-      ...overrides,
-    }
-  }
-
-  // ── 6a. Vacas lactantes — Lote 1 (60 animais) ─────────
-  const cows1: Prisma.AnimalCreateManyInput[] = Array.from({ length: 60 }, (_, i) => mkAnimal({
-    name:      i < COW_NAMES.length ? COW_NAMES[i] : undefined,
-    sex:       'FEMALE',
-    category:  'COW',
-    breed:     pick(BREEDS_DAIRY),
-    purpose:   'DAIRY',
-    birthDate: new Date(2017 + (i % 5), i % 12, 1 + (i % 28)),
-    lotId:     lotLeite1!.id,
-    entryDate: subDays(NOW, rnd(200, 800, 0)),
-  }))
-  animals.push(...cows1)
-
-  // ── 6b. Vacas lactantes — Lote 2 (55 animais) ─────────
-  const cows2: Prisma.AnimalCreateManyInput[] = Array.from({ length: 55 }, (_, i) => mkAnimal({
-    name:      i + 60 < COW_NAMES.length ? COW_NAMES[i + 60] : undefined,
-    sex:       'FEMALE',
-    category:  'COW',
-    breed:     pick(BREEDS_DAIRY),
-    purpose:   'DAIRY',
-    birthDate: new Date(2016 + (i % 6), (i * 3) % 12, 1 + (i % 28)),
-    lotId:     lotLeite2!.id,
-    entryDate: subDays(NOW, rnd(300, 1200, 0)),
-  }))
-  animals.push(...cows2)
-
-  // ── 6c. Vacas secas (20 animais) ──────────────────────
-  const dryCows: Prisma.AnimalCreateManyInput[] = Array.from({ length: 20 }, (_, i) => mkAnimal({
-    sex:       'FEMALE',
-    category:  'COW',
-    breed:     pick(BREEDS_DAIRY),
-    purpose:   'DAIRY',
-    birthDate: new Date(2015 + (i % 7), (i * 2) % 12, 1 + (i % 28)),
-    lotId:     lotSeco!.id,
-    entryDate: subDays(NOW, rnd(500, 2000, 0)),
-  }))
-  animals.push(...dryCows)
-
-  // ── 6d. Novilhas — Lote 1 (35 animais) ───────────────
-  const heifers1: Prisma.AnimalCreateManyInput[] = Array.from({ length: 35 }, (_, i) => mkAnimal({
-    sex:       'FEMALE',
-    category:  'HEIFER',
-    breed:     pick(BREEDS_DAIRY),
-    purpose:   'DAIRY',
-    birthDate: new Date(2022 + (i % 2), (i * 5) % 12, 1 + (i % 28)),
-    lotId:     lotNov1!.id,
-    entryDate: subDays(NOW, rnd(30, 400, 0)),
-  }))
-  animals.push(...heifers1)
-
-  // ── 6e. Novilhas — Lote 2 (30 animais) ───────────────
-  const heifers2: Prisma.AnimalCreateManyInput[] = Array.from({ length: 30 }, (_, i) => mkAnimal({
-    sex:       'FEMALE',
-    category:  'HEIFER',
-    breed:     pick([...BREEDS_DAIRY, ...BREEDS_BEEF]),
-    purpose:   maybe(0.7) ? 'DAIRY' : 'BEEF',
-    birthDate: new Date(2022 + (i % 2), (i * 7) % 12, 1 + (i % 28)),
-    lotId:     lotNov2!.id,
-    entryDate: subDays(NOW, rnd(30, 400, 0)),
-  }))
-  animals.push(...heifers2)
-
-  // ── 6f. Bezerros (45 animais — sexo misto) ────────────
-  const calves: Prisma.AnimalCreateManyInput[] = Array.from({ length: 45 }, (_, i) => {
-    const sex: 'MALE'|'FEMALE' = maybe(0.52) ? 'FEMALE' : 'MALE'
-    return mkAnimal({
-      sex,
-      category:  'CALF',
-      breed:     pick(BREEDS_DAIRY),
-      purpose:   sex === 'FEMALE' ? 'DAIRY' : 'BOTH',
-      birthDate: new Date(2024, (i * 3) % 12, 1 + (i % 28)),
-      lotId:     lotBezerreiro!.id,
-      entryDate: new Date(2024, (i * 3) % 12, 1 + (i % 28)),
-      birthType: maybe(0.45) ? 'INSEMINATION' : 'NATURAL',
-    })
-  })
-  animals.push(...calves)
-
-  // ── 6g. Touros (5 animais) ────────────────────────────
-  const bulls: Prisma.AnimalCreateManyInput[] = BULL_NAMES.map((name, i) => mkAnimal({
-    name,
-    sex:       'MALE',
-    category:  'BULL',
-    breed:     pick([...BREEDS_BEEF, 'Girolando']),
-    purpose:   'BOTH',
-    birthDate: new Date(2015 + i, (i * 3) % 12, 1 + i),
-    lotId:     lotReprod!.id,
-    entryDate: subDays(NOW, rnd(300, 2000, 0)),
-  }))
-  animals.push(...bulls)
-
-  // ── 6h. Bois em engorda (55 animais) ──────────────────
-  const steers: Prisma.AnimalCreateManyInput[] = Array.from({ length: 55 }, (_, i) => mkAnimal({
-    sex:       'MALE',
-    category:  'STEER',
-    breed:     pick(BREEDS_BEEF),
-    purpose:   'BEEF',
-    birthDate: new Date(2021 + (i % 3), (i * 4) % 12, 1 + (i % 28)),
-    lotId:     lotEngorda!.id,
-    entryDate: subDays(NOW, rnd(30, 400, 0)),
-  }))
-  animals.push(...steers)
-
-  // ── 6i. Histórico — vendidos/mortos (15 animais) ──────
-  const STATUSES: Array<'SOLD'|'DEAD'|'TRANSFERRED'> = [
-    'SOLD','SOLD','SOLD','SOLD','SOLD','SOLD','SOLD','SOLD',
-    'DEAD','DEAD','DEAD','DEAD',
-    'TRANSFERRED','TRANSFERRED','TRANSFERRED',
-  ]
-  const historical: Prisma.AnimalCreateManyInput[] = STATUSES.map((status, i) => {
-    const exitDate = subDays(NOW, rnd(10, 200, 0))
-    return mkAnimal({
-      sex:        maybe(0.6) ? 'FEMALE' : 'MALE',
-      category:   maybe(0.5) ? 'COW' : 'STEER',
-      breed:      pick(BREEDS_MIXED),
-      purpose:    'BOTH',
-      status,
-      birthDate:  new Date(2017 + (i % 5), i % 12, 1 + (i % 28)),
-      entryDate:  subDays(exitDate, rnd(200, 800, 0)),
-      exitDate,
-      exitReason: status === 'SOLD'
-        ? pick(['Venda para terceiros', 'Leilão', 'Negociação direta'])
-        : status === 'DEAD'
-        ? pick(['Morte súbita', 'Doença respiratória', 'Acidente', 'Complicação pós-parto'])
-        : 'Transferência para outra unidade',
-    })
-  })
-  animals.push(...historical)
-
-  // ── Insere todos os animais ────────────────────────────
-  await prisma.animal.createMany({ data: animals, skipDuplicates: true })
-
-  const activeAnimals  = animals.filter(a => a.status === 'ACTIVE' || !a.status)
-  const lactatingIds   = [...cows1, ...cows2].map(a => ({ id: a.id as string, base: rnd(15, 30) }))
-
-  console.log(`✅  Animais: ${animals.length} total (${activeAnimals.length} ativos, ${historical.length} histórico)`)
-
-  // ── 7. Registros de leite (60 dias) ───────────────────
-  console.log('\n⏳  Gerando registros de leite (60 dias)...')
-
-  const MILK_DAYS = 60
-  const milkBatch: Prisma.MilkRecordCreateManyInput[] = []
-
-  for (let d = MILK_DAYS; d >= 0; d--) {
-    const day = subDays(startOfDay(NOW), d)
-
-    for (const { id: animalId, base } of lactatingIds) {
-      // ~12% de chance de não ordenhar (doença, falta do funcionário, etc.)
-      if (maybe(0.12)) continue
-
-      // Variação diária ±18%
-      const daily      = base * (0.82 + Math.random() * 0.36)
-      const mornPct    = 0.50 + Math.random() * 0.10  // 50–60% de manhã
-      const morningL   = Math.round(daily * mornPct * 10) / 10
-      const afternoonL = Math.round((daily - morningL)  * 10) / 10
-
-      milkBatch.push(
-        { animalId, farmId: farm.id, liters: morningL,   shift: 'MORNING',   recordedAt: addHours(day, 6)  },
-        { animalId, farmId: farm.id, liters: afternoonL, shift: 'AFTERNOON', recordedAt: addHours(day, 14) },
-      )
-    }
-  }
-
-  // Insere em lotes de 2 000 para não estourar memória do statement
-  const MILK_CHUNK = 2000
-  for (let i = 0; i < milkBatch.length; i += MILK_CHUNK) {
-    await prisma.milkRecord.createMany({ data: milkBatch.slice(i, i + MILK_CHUNK), skipDuplicates: true })
-  }
-  console.log(`✅  Registros de leite (individuais): ${milkBatch.length}`)
-
-  // ── 7b. Sessões de ordenha agregadas (UI principal) ───
-  // Reflete a produção total da fazenda por turno.
-  // ~400–450 L manhã, ~280–320 L tarde, ~35–45 vacas ordenhadas.
-  console.log('\n⏳  Gerando sessões de ordenha (60 dias × 2 turnos)...')
-
-  const sessionBatch: Prisma.MilkingSessionCreateManyInput[] = []
-
-  for (let d = MILK_DAYS; d >= 0; d--) {
-    const date = startOfDay(subDays(NOW, d))
-    // Normaliza para meio-dia UTC (campo @db.Date evita ambiguidade de fuso)
-    date.setUTCHours(12, 0, 0, 0)
-
-    // Cows ordenhadas varia ±5 por dia (simulação de faltas/doentes)
-    const cowsMorning   = Math.round(rnd(38, 45, 0))
-    const cowsAfternoon = Math.round(rnd(32, 42, 0))
-
-    // Litros por turno — variação natural ±10%
-    const morningBase   = rnd(410, 450)
-    const afternoonBase = rnd(285, 315)
-
-    // Ocasionalmente não há ordenha (1% de chance por turno)
-    if (!maybe(0.01)) {
-      sessionBatch.push({
-        id:          randomUUID(),
-        farmId:      farm.id,
-        shift:       'MORNING',
-        date,
-        totalLiters: Math.round(morningBase   * 10) / 10,
-        milkingCows: cowsMorning,
-        notes:       null,
-      })
-    }
-
-    if (!maybe(0.01)) {
-      sessionBatch.push({
-        id:          randomUUID(),
-        farmId:      farm.id,
-        shift:       'AFTERNOON',
-        date,
-        totalLiters: Math.round(afternoonBase * 10) / 10,
-        milkingCows: cowsAfternoon,
-        notes:       null,
-      })
-    }
-  }
-
-  await prisma.milkingSession.createMany({ data: sessionBatch, skipDuplicates: true })
-  console.log(`✅  Sessões de ordenha: ${sessionBatch.length}`)
-
-  // ── 8. Pesagens ───────────────────────────────────────
-  console.log('\n⏳  Gerando pesagens...')
-
-  const weightConfig: Record<string, { min: number; max: number }> = {
-    COW:    { min: 420, max: 590 },
-    HEIFER: { min: 220, max: 370 },
-    CALF:   { min:  50, max: 160 },
-    BULL:   { min: 650, max: 940 },
-    STEER:  { min: 300, max: 550 },
-  }
-
-  const weightBatch: Prisma.WeightRecordCreateManyInput[] = []
-  const WEIGHT_SAMPLE = 220  // número de animais a pesar
-
-  for (const animal of activeAnimals.slice(0, WEIGHT_SAMPLE)) {
-    const cfg = weightConfig[animal.category as string]
-    if (!cfg) continue
-    const base       = rnd(cfg.min, cfg.max)
-    const nWeighings = 2 + Math.floor(Math.random() * 3)  // 2–4 pesagens
-
-    for (let w = nWeighings - 1; w >= 0; w--) {
-      const daysAgo     = w * rnd(55, 95, 0)
-      const growthFactor = 1 + (nWeighings - 1 - w) * 0.03 * Math.random()
-      weightBatch.push({
-        animalId:   animal.id as string,
-        weightKg:   Math.round(base * growthFactor * 10) / 10,
-        measuredAt: subDays(NOW, daysAgo),
-        notes:      maybe(0.2) ? pick(['Rotina mensal', 'Pré-venda', 'Pós-parto']) : null,
-      })
-    }
-  }
-
-  await prisma.weightRecord.createMany({ data: weightBatch, skipDuplicates: true })
-  console.log(`✅  Pesagens: ${weightBatch.length}`)
-
-  // ── 9. Eventos de saúde ───────────────────────────────
-  console.log('\n⏳  Gerando eventos de saúde...')
-
-  const healthBatch: Prisma.HealthEventCreateManyInput[] = []
-  const femalesForHealth = [...cows1, ...cows2, ...dryCows, ...heifers1, ...heifers2]
-
-  // Vacinação febre aftosa — campanha de 6 meses atrás (100 animais)
-  for (const animal of femalesForHealth.slice(0, 100)) {
-    healthBatch.push({
-      animalId:    animal.id as string,
-      type:        'VACCINATION',
-      description: 'Vacinação contra Febre Aftosa — campanha semestral',
-      medication:  'Aftosa Biovet',
-      cost:        rnd(8, 15),
-      occurredAt:  subDays(NOW, 175 + Math.floor(Math.random() * 15)),
-      resolved:    true,
-    })
-  }
-
-  // Vacinação brucelose — novilhas (3–8 meses)
-  for (const animal of heifers1.slice(0, 20)) {
-    healthBatch.push({
-      animalId:    animal.id as string,
-      type:        'VACCINATION',
-      description: 'Vacinação contra Brucelose — dose única',
-      medication:  'B19 Brucella Abortus',
-      cost:        rnd(20, 35),
-      occurredAt:  subDays(NOW, 30 + Math.floor(Math.random() * 60)),
-      resolved:    true,
-    })
-  }
-
-  // Vermifugação trimestral (80 animais)
-  for (const animal of activeAnimals.slice(0, 80)) {
-    healthBatch.push({
-      animalId:    animal.id as string,
-      type:        'DEWORMING',
-      description: 'Vermifugação trimestral — controle de endo/ectoparasitos',
-      medication:  pick(DEWORM_MEDS),
-      cost:        rnd(5, 18),
-      occurredAt:  subDays(NOW, 85 + Math.floor(Math.random() * 20)),
-      resolved:    true,
-    })
-  }
-
-  // Doenças individuais (14 casos)
-  for (let d = 0; d < 14; d++) {
-    const animal   = pick([...cows1, ...cows2])
-    const resolved = maybe(0.78)
-    healthBatch.push({
-      animalId:    animal.id as string,
-      type:        'DISEASE',
-      description: pick(DISEASE_DESCS),
-      medication:  pick(HEALTH_MEDS),
-      cost:        rnd(50, 320),
-      occurredAt:  subDays(NOW, rnd(3, 130, 0)),
-      resolved,
-      notes:       resolved
-        ? 'Animal recuperado com sucesso após tratamento'
-        : 'Em tratamento — retornar em 5 dias para reavaliação',
-    })
-  }
-
-  // Exames (18 exames)
-  for (let e = 0; e < 18; e++) {
-    const animal = pick([...cows1, ...cows2, ...dryCows])
-    healthBatch.push({
-      animalId:    animal.id as string,
-      type:        'EXAM',
-      description: pick([
-        'CMT — California Mastitis Test',
-        'Tuberculinização — Teste de tuberculose',
-        'Exame de brucelose — Antígeno Acidificado Tamponado',
-        'Exame ginecológico — avaliação reprodutiva',
-        'Ultrassonografia reprodutiva',
-      ]),
-      cost:      rnd(30, 120),
-      occurredAt: subDays(NOW, rnd(7, 210, 0)),
-      resolved:  true,
-    })
-  }
-
-  await prisma.healthEvent.createMany({ data: healthBatch, skipDuplicates: true })
-  console.log(`✅  Eventos de saúde: ${healthBatch.length}`)
-
-  // ── 10. Reprodução ────────────────────────────────────
-  console.log('\n⏳  Gerando eventos reprodutivos...')
-
-  const reproBatch:   Prisma.ReproductionCreateManyInput[] = []
-  const alertsBatch:  Prisma.AlertCreateManyInput[]         = []
-  const reproAnimals  = [...cows1, ...cows2, ...dryCows, ...heifers1]
-
-  // 32 inseminações / montas nos últimos 6 meses
-  for (let i = 0; i < 32; i++) {
-    const animal = pick(reproAnimals)
-    const date   = subDays(NOW, rnd(10, 180, 0))
-    const type: 'INSEMINATION'|'NATURAL_MATING' = maybe(0.72) ? 'INSEMINATION' : 'NATURAL_MATING'
-    reproBatch.push({
-      animalId:      animal.id as string,
-      type,
-      date,
-      status:        'PENDING',
-      bullName:      type === 'NATURAL_MATING' ? pick(BULL_NAMES) : pick(SEMEN_NAMES),
-      nextCheckDate: addDays(date, 45),
-    })
-  }
-
-  // 22 diagnósticos de gestação
-  for (let i = 0; i < 22; i++) {
-    const animal       = pick([...cows1, ...cows2, ...dryCows])
-    const date         = subDays(NOW, rnd(15, 150, 0))
-    const status: 'CONFIRMED'|'FAILED'|'PENDING' =
-      i < 13 ? 'CONFIRMED' : i < 18 ? 'FAILED' : 'PENDING'
-    const calvingDate  = addDays(date, 280)
-
-    reproBatch.push({
-      animalId:      animal.id as string,
-      type:          'PREGNANCY_CHECK',
-      date,
-      status,
-      nextCheckDate: status === 'CONFIRMED' ? calvingDate : null,
-      result:        status === 'CONFIRMED'
-        ? 'Prenhez confirmada via palpação retal / ultrassonografia'
-        : status === 'FAILED'
-        ? 'Diagnóstico negativo — animal vazio'
-        : undefined,
-    })
-
-    if (status === 'CONFIRMED') {
-      alertsBatch.push({
-        farmId:      farm.id,
-        animalId:    animal.id as string,
-        type:        'CALVING',
-        title:       `Parto previsto — ${animal.tag}`,
-        description: 'Prenhez confirmada. Prepare o local de parição.',
-        priority:    'HIGH',
-        status:      calvingDate < NOW ? 'RESOLVED' : 'PENDING',
-        dueDate:     calvingDate,
-        resolvedAt:  calvingDate < NOW
-          ? addDays(calvingDate, Math.floor(Math.random() * 5))
-          : undefined,
-      })
-    }
-  }
-
-  await prisma.reproduction.createMany({ data: reproBatch, skipDuplicates: true })
-  console.log(`✅  Eventos reprodutivos: ${reproBatch.length}`)
-
-  // ── 11. Alertas ───────────────────────────────────────
-  console.log('\n⏳  Gerando alertas...')
-
-  // Vacinas vencendo (8)
-  for (let i = 0; i < 8; i++) {
-    const animal = pick([...cows1, ...cows2])
-    alertsBatch.push({
-      farmId:      farm.id,
-      animalId:    animal.id as string,
-      type:        'VACCINATION',
-      title:       `Vacinação vencendo — ${animal.tag}`,
-      description: 'Vacina de febre aftosa vence em breve. Agendar reforço.',
-      priority:    'MEDIUM',
-      status:      'PENDING',
-      dueDate:     addDays(NOW, rnd(1, 25, 0)),
-    })
-  }
-
-  // Pesagens pendentes (5)
-  for (let i = 0; i < 5; i++) {
-    const animal = pick([...heifers1, ...heifers2])
-    alertsBatch.push({
-      farmId:      farm.id,
-      animalId:    animal.id as string,
-      type:        'WEIGHT_CHECK',
-      title:       `Pesagem pendente — ${animal.tag}`,
-      description: 'Novilha não pesa há mais de 90 dias.',
-      priority:    'LOW',
-      status:      'PENDING',
-      dueDate:     addDays(NOW, rnd(1, 15, 0)),
-    })
-  }
-
-  // Cios detectados (7)
-  for (let i = 0; i < 7; i++) {
-    const animal = pick([...cows1, ...cows2])
-    alertsBatch.push({
-      farmId:      farm.id,
-      animalId:    animal.id as string,
-      type:        'HEAT',
-      title:       `Cio detectado — ${animal.tag}`,
-      description: 'Animal apresentou sinais de cio. Programar inseminação.',
-      priority:    'HIGH',
-      status:      maybe(0.4) ? 'RESOLVED' : 'PENDING',
-      dueDate:     addDays(NOW, rnd(-2, 5, 0)),
-    })
-  }
-
-  // DG pendentes (10)
-  for (let i = 0; i < 10; i++) {
-    const animal = pick([...cows1, ...cows2])
-    alertsBatch.push({
-      farmId:      farm.id,
-      animalId:    animal.id as string,
-      type:        'PREGNANCY_CHECK',
-      title:       `DG pendente — ${animal.tag}`,
-      description: 'Animal inseminado há 45+ dias. Realizar diagnóstico de gestação.',
-      priority:    'MEDIUM',
-      status:      'PENDING',
-      dueDate:     addDays(NOW, rnd(1, 20, 0)),
-    })
-  }
-
-  // Secagens (5)
-  for (let i = 0; i < 5; i++) {
-    const animal = pick(cows1)
-    alertsBatch.push({
-      farmId:      farm.id,
-      animalId:    animal.id as string,
-      type:        'DRY_OFF',
-      title:       `Secagem prevista — ${animal.tag}`,
-      description: 'Vaca prenhe deve ser seca para descanso pré-parto.',
-      priority:    'MEDIUM',
-      status:      'PENDING',
-      dueDate:     addDays(NOW, rnd(1, 25, 0)),
-    })
-  }
-
-  await prisma.alert.createMany({ data: alertsBatch, skipDuplicates: true })
-  console.log(`✅  Alertas: ${alertsBatch.length}`)
-
-  // ── 12. Fotos (registros fake para testes de storage) ─
-  console.log('\n⏳  Gerando fotos de teste...')
-
-  // Seleciona até 40 animais variados para ter fotos
-  const photoAnimals = [
-    ...cows1.slice(0, 12),
-    ...cows2.slice(0, 8),
-    ...heifers1.slice(0, 8),
-    ...bulls.slice(0, 4),
-    ...calves.slice(0, 8),
-  ]
-
-  const photoBatch: Prisma.AnimalPhotoCreateManyInput[] = []
-  let totalPhotoSizeKb = 0
-
-  const CAPTIONS = [
-    'Pesagem trimestral',
-    'Após parto',
-    'Chegada na fazenda',
-    'Vacinação febre aftosa',
-    'Controle reprodutivo',
-    null,
-    null,
-    null,
-  ]
-
-  for (const animal of photoAnimals) {
-    // Cada animal terá 1-3 fotos
-    const numPhotos = rnd(1, 3, 0)
-    for (let pi = 0; pi < numPhotos; pi++) {
-      const photoId   = randomUUID()
-      const takenAt   = subDays(NOW, rnd(0, 180, 0))
-      // Imagens de placeholder do picsum — funcionam em dev para testar a UI
-      const seed      = Math.floor(Math.random() * 500)
-      const url       = `https://picsum.photos/seed/${photoId}/800/600`
-      const thumbUrl  = `https://picsum.photos/seed/${photoId}/300/225`
-      // Simula o tamanho pós-compressão: imagem 60-180 KB, thumb 10-25 KB
-      const imgKb    = rnd(60, 180, 0)
-      const thumbKb  = rnd(10, 25, 0)
-      const sizeKb   = imgKb + thumbKb
-
-      totalPhotoSizeKb += sizeKb
-
-      photoBatch.push({
-        id:           `photo_${photoId.replace(/-/g, '').slice(0, 20)}`,
-        animalId:     animal.id as string,
-        url,
-        thumbnailUrl: thumbUrl,
-        caption:      pick(CAPTIONS as (string | null)[]),
-        takenAt,
-        isPrimary:    pi === 0,   // Primeira foto de cada animal é primária
-        sizeKb,
-      })
-
-      // Suprime lint de 'seed' não usada
-      void seed
-    }
-  }
-
-  await prisma.animalPhoto.createMany({ data: photoBatch, skipDuplicates: true })
-
-  // Atualiza contadores de storage da fazenda para refletir os dados seed
-  const totalStorageMb = totalPhotoSizeKb / 1024
-  await prisma.farm.update({
-    where: { id: farm.id },
+  console.log('\nBovControl seed-dev - Fazenda Perdigao/MG\n')
+  await cleanDev()
+
+  const pwHash  = await hash('bovcontrol123', 12)
+  const owner   = await prisma.user.upsert({ where: { email: 'admin@perdigao.com.br'   }, update: { passwordHash: pwHash }, create: { name: 'Admin Perdigao',    email: 'admin@perdigao.com.br',    passwordHash: pwHash } })
+  const manager = await prisma.user.upsert({ where: { email: 'gerente@perdigao.com.br' }, update: { passwordHash: pwHash }, create: { name: 'Gerente Perdigao',  email: 'gerente@perdigao.com.br',  passwordHash: pwHash } })
+  const worker  = await prisma.user.upsert({ where: { email: 'operador@perdigao.com.br'}, update: { passwordHash: pwHash }, create: { name: 'Operador Perdigao', email: 'operador@perdigao.com.br', passwordHash: pwHash } })
+
+  const farm = await prisma.farm.create({
     data: {
-      imageCount:    photoBatch.length,
-      storageUsedMb: totalStorageMb,
+      id: FARM_ID, name: 'Fazenda Perdigao', city: 'Perdigao', state: 'MG',
+      users: { create: [{ userId: owner.id, role: 'OWNER' }, { userId: manager.id, role: 'MANAGER' }, { userId: worker.id, role: 'WORKER' }] },
     },
   })
-  console.log(`✅  Fotos: ${photoBatch.length} (${totalStorageMb.toFixed(1)} MB simulados)`)
 
-  // ── 13. Tipos de ração ────────────────────────────────
-  console.log('\n⏳  Gerando tipos de ração...')
+  console.log('  Criando pastos...')
+  const pCurral  = await prisma.pasture.create({ data: { farmId: FARM_ID, name: 'Curral Principal', areaHectares: 15, grassType: 'Brachiaria', maxCapacity: 120 } })
+  const pCentico = await prisma.pasture.create({ data: { farmId: FARM_ID, name: 'Centico',          areaHectares: 40, grassType: 'Panicum',    maxCapacity: 200 } })
+  await prisma.pasture.create({ data: { farmId: FARM_ID, name: 'Coelho', areaHectares: 30, grassType: 'Brachiaria', maxCapacity: 150 } })
+  const pDenis   = await prisma.pasture.create({ data: { farmId: FARM_ID, name: 'Denis',   areaHectares: 25, grassType: 'Estrela',    maxCapacity: 100 } })
+  const pHeranca = await prisma.pasture.create({ data: { farmId: FARM_ID, name: 'Heranca', areaHectares: 50, grassType: 'Panicum',    maxCapacity: 250 } })
 
-  type FeedTypeSeed = {
-    id: string; farmId: string; name: string; brand: string | null
-    weightPerBagKg: number; pricePerBag: number; proteinPercent: number | null; active: boolean
+  console.log('  Criando lotes...')
+  const lotLeite  = await prisma.lot.create({ data: { farmId: FARM_ID, name: 'Vacas Leite',         type: 'LACTATING', maxCapacity: 80,  pastureId: pCurral.id  } })
+  const lotSecas  = await prisma.lot.create({ data: { farmId: FARM_ID, name: 'Vacas Secas Prenhas', type: 'DRY',       maxCapacity: 40,  pastureId: pDenis.id   } })
+  const lotBezerr = await prisma.lot.create({ data: { farmId: FARM_ID, name: 'Bezerreiro',          type: 'CALF',      maxCapacity: 80,  pastureId: pCentico.id } })
+  const lotRecria = await prisma.lot.create({ data: { farmId: FARM_ID, name: 'Recria',              type: 'HEIFER',    maxCapacity: 60,  pastureId: pHeranca.id } })
+  const lotEngord = await prisma.lot.create({ data: { farmId: FARM_ID, name: 'Engorda',             type: 'FATTENING', maxCapacity: 100, pastureId: pHeranca.id } })
+  const lotReprod = await prisma.lot.create({ data: { farmId: FARM_ID, name: 'Reprodutores',        type: 'BREEDING',  maxCapacity: 10,  pastureId: pCurral.id  } })
+
+  console.log('  Configurando FarmSettings...')
+  await prisma.farmSettings.create({
+    data: { farmId: FARM_ID, mainProductionLotId: lotLeite.id, enableMilkParticipants: true, autoUpdateMilkStatus: true, useEstimatedMilkPerCow: true },
+  })
+
+  console.log('  Gerando animais...')
+  const breeds = ['Girolando', 'Holandesa', 'Jersey', 'Gir Leiteiro', 'Mestico']
+  const vacasLeiteIds: string[] = []
+  const vacasSecasIds: string[] = []
+
+  for (let i = 0; i < 62; i++) {
+    const a = await prisma.animal.create({ data: { farmId: FARM_ID, tag: nextTag(), sex: 'FEMALE', category: 'COW',    breed: pick(breeds), status: 'ACTIVE', purpose: 'DAIRY', milkStatus: 'LACTATING',    lotId: lotLeite.id,  birthDate: daysBefore(rnd(1000, 2500, 0)) } })
+    vacasLeiteIds.push(a.id)
   }
-  const feedTypeData: FeedTypeSeed[] = [
-    {
-      id: 'ft_lactacao', farmId: farm.id,
-      name: 'Ração Lactação', brand: 'Nutrimilho',
-      weightPerBagKg: 30, pricePerBag: 92.50, proteinPercent: 22, active: true,
-    },
-    {
-      id: 'ft_crescimento', farmId: farm.id,
-      name: 'Ração Crescimento', brand: 'BovMix',
-      weightPerBagKg: 30, pricePerBag: 78.00, proteinPercent: 18, active: true,
-    },
-    {
-      id: 'ft_confinamento', farmId: farm.id,
-      name: 'Confinamento Intensivo', brand: 'AgroNutri',
-      weightPerBagKg: 40, pricePerBag: 115.00, proteinPercent: 15, active: true,
-    },
-    {
-      id: 'ft_mineral', farmId: farm.id,
-      name: 'Suplemento Mineral', brand: null,
-      weightPerBagKg: 25, pricePerBag: 145.00, proteinPercent: null, active: true,
-    },
-  ]
-  await prisma.feedType.createMany({ data: feedTypeData, skipDuplicates: true })
-  console.log(`✅  Tipos de ração: ${feedTypeData.length}`)
+  for (let i = 0; i < 28; i++) {
+    const a = await prisma.animal.create({ data: { farmId: FARM_ID, tag: nextTag(), sex: 'FEMALE', category: 'COW',    breed: pick(breeds), status: 'ACTIVE', purpose: 'DAIRY', milkStatus: 'DRY_PREGNANT', lotId: lotSecas.id,  birthDate: daysBefore(rnd(1200, 2800, 0)) } })
+    vacasSecasIds.push(a.id)
+  }
+  for (let i = 0; i < 55; i++) {
+    const sx = pick(['MALE', 'FEMALE']) as 'MALE' | 'FEMALE'
+    await prisma.animal.create({ data: { farmId: FARM_ID, tag: nextTag(), sex: sx, category: 'CALF', breed: pick(breeds), status: 'ACTIVE', purpose: 'DAIRY', milkStatus: 'NA', lotId: lotBezerr.id, birthDate: daysBefore(rnd(30, 180, 0)) } })
+  }
+  for (let i = 0; i < 40; i++) {
+    await prisma.animal.create({ data: { farmId: FARM_ID, tag: nextTag(), sex: 'FEMALE', category: 'HEIFER', breed: pick(breeds), status: 'ACTIVE', purpose: 'DAIRY', milkStatus: 'HEIFER', lotId: lotRecria.id, birthDate: daysBefore(rnd(300, 700, 0)) } })
+  }
+  for (let i = 0; i < 50; i++) {
+    const cat = pick(['STEER', 'CALF']) as 'STEER' | 'CALF'
+    await prisma.animal.create({ data: { farmId: FARM_ID, tag: nextTag(), sex: 'MALE', category: cat, breed: pick(['Nelore', 'Angus', 'Mestico']), status: 'ACTIVE', purpose: 'BEEF', milkStatus: 'NA', lotId: lotEngord.id, birthDate: daysBefore(rnd(180, 600, 0)) } })
+  }
+  for (let i = 0; i < 6; i++) {
+    await prisma.animal.create({ data: { farmId: FARM_ID, tag: nextTag(), sex: 'MALE', category: 'BULL', breed: pick(['Gir', 'Girolando', 'Nelore']), status: 'ACTIVE', purpose: 'DAIRY', milkStatus: 'NA', lotId: lotReprod.id, birthDate: daysBefore(rnd(900, 2000, 0)) } })
+  }
 
-  // ── 14. Sessões de alimentação (90 dias) ──────────────
-  console.log('\n⏳  Gerando histórico de alimentação (90 dias)...')
+  console.log('  Gerando reproducoes...')
+  for (const animalId of vacasSecasIds) {
+    const tp = pick(['INSEMINATION', 'NATURAL_MATING']) as 'INSEMINATION' | 'NATURAL_MATING'
+    await prisma.reproduction.create({ data: { animalId, type: tp, status: 'CONFIRMED', date: daysBefore(rnd(60, 200, 0)), notes: 'Gestacao confirmada por ultrassom.' } })
+  }
+  for (const animalId of vacasLeiteIds.slice(0, 12)) {
+    await prisma.reproduction.create({ data: { animalId, type: 'INSEMINATION', status: 'CONFIRMED', date: daysBefore(rnd(30, 90, 0)) } })
+  }
 
-  const ft_lac  = feedTypeData[0]!
-  const ft_cre  = feedTypeData[1]!
-  const ft_conf = feedTypeData[2]!
-  const ft_min  = feedTypeData[3]!
+  console.log('  Gerando 90 dias de ordenha com participantes...')
+  for (let d = 89; d >= 0; d--) {
+    const sessionDate = startOfDay(subDays(NOW, d))
+    for (const shift of ['MORNING', 'AFTERNOON'] as const) {
+      const count       = Math.min(Math.floor(rnd(57, 62, 0)), vacasLeiteIds.length)
+      const selected    = [...vacasLeiteIds].sort(() => Math.random() - 0.5).slice(0, count)
+      const totalLiters = Math.round(count * rnd(8.5, 12.5) * 10) / 10
+      const lpCow       = Math.round(totalLiters / count * 10) / 10
 
-  // Mapa lote → [animalIds, feedType principal, bags por sessão]
-  const lotFeedConfig = [
-    { lot: lotLeite1!, animals: cows1,    ft: ft_lac,  bagsMin: 6, bagsMax: 10, freqDays: 1 },
-    { lot: lotLeite2!, animals: cows2,    ft: ft_lac,  bagsMin: 5, bagsMax:  9, freqDays: 1 },
-    { lot: lotSeco!,   animals: dryCows,  ft: ft_min,  bagsMin: 2, bagsMax:  4, freqDays: 2 },
-    { lot: lotNov1!,   animals: heifers1, ft: ft_cre,  bagsMin: 3, bagsMax:  6, freqDays: 1 },
-    { lot: lotNov2!,   animals: heifers2, ft: ft_cre,  bagsMin: 3, bagsMax:  5, freqDays: 2 },
-  ]
-
-  const feedSessionBatch: Prisma.FeedSessionCreateManyInput[] = []
-  const consumptionBatch: Prisma.AnimalFeedConsumptionCreateManyInput[] = []
-
-  // Acumuladores para atualizar animal ao final
-  const animalFeedKg   = new Map<string, number>()
-  const animalFeedCost = new Map<string, number>()
-
-  for (const cfg of lotFeedConfig) {
-    const activeAnimalIds = cfg.animals
-      .filter(a => (a.status ?? 'ACTIVE') === 'ACTIVE')
-      .map(a => a.id as string)
-
-    if (activeAnimalIds.length === 0) continue
-
-    for (let day = 0; day < 90; day++) {
-      if (day % cfg.freqDays !== 0) continue
-
-      const sessionDate = startOfDay(subDays(NOW, day))
-      sessionDate.setUTCHours(12, 0, 0, 0)
-
-      const bags         = rnd(cfg.bagsMin, cfg.bagsMax, 0)
-      const totalKg      = bags * cfg.ft.weightPerBagKg
-      const totalCost    = bags * cfg.ft.pricePerBag * (0.9 + Math.random() * 0.2) // ±10% variação de preço
-      const animalCount  = activeAnimalIds.length
-      const kgPerAnimal  = totalKg  / animalCount
-      const costPerAnimal = totalCost / animalCount
-
-      const sessionId = randomUUID()
-
-      feedSessionBatch.push({
-        id:                   sessionId,
-        farmId:               farm.id,
-        lotId:                cfg.lot.id,
-        feedTypeId:           cfg.ft.id,
-        date:                 sessionDate,
-        bagCount:             bags,
-        totalWeightKg:        totalKg,
-        totalCost:            parseFloat(totalCost.toFixed(2)),
-        animalCount,
-        averageKgPerAnimal:   kgPerAnimal,
-        averageCostPerAnimal: parseFloat(costPerAnimal.toFixed(4)),
-        createdById:          uAdmin.id,
+      const sess = await prisma.milkingSession.create({
+        data: { farmId: FARM_ID, shift, date: sessionDate, totalLiters, milkingCows: count, idempotencyKey: randomUUID() },
       })
 
-      for (const animalId of activeAnimalIds) {
-        consumptionBatch.push({
-          animalId,
-          feedSessionId: sessionId,
-          consumedKg:    kgPerAnimal,
-          estimatedCost: parseFloat(costPerAnimal.toFixed(4)),
-        })
-        animalFeedKg.set(animalId,   (animalFeedKg.get(animalId)   ?? 0) + kgPerAnimal)
-        animalFeedCost.set(animalId, (animalFeedCost.get(animalId) ?? 0) + costPerAnimal)
-      }
+      await prisma.milkingSessionParticipant.createMany({
+        data: selected.map((animalId) => ({ sessionId: sess.id, animalId, liters: lpCow, isEstimated: true, idempotencyKey: randomUUID() })),
+        skipDuplicates: true,
+      })
     }
   }
 
-  // Insere em lotes para não estourar limites de SQL
-  const BATCH = 500
-  for (let i = 0; i < feedSessionBatch.length; i += BATCH) {
-    await prisma.feedSession.createMany({
-      data: feedSessionBatch.slice(i, i + BATCH),
-      skipDuplicates: true,
-    })
-  }
-  for (let i = 0; i < consumptionBatch.length; i += BATCH) {
-    await prisma.animalFeedConsumption.createMany({
-      data: consumptionBatch.slice(i, i + BATCH),
-      skipDuplicates: true,
-    })
+  console.log('  Gerando alertas...')
+  const alertAnimals = [...vacasSecasIds.slice(0, 5), ...vacasLeiteIds.slice(0, 3)]
+  const alertTypes   = ['PREGNANCY_CHECK', 'CALVING', 'DRY_OFF'] as Array<'PREGNANCY_CHECK' | 'CALVING' | 'DRY_OFF'>
+  const priorities   = ['HIGH', 'MEDIUM'] as Array<'HIGH' | 'MEDIUM'>
+  for (const animalId of alertAnimals) {
+    await prisma.alert.create({ data: { farmId: FARM_ID, animalId, type: pick(alertTypes), title: 'Verificacao necessaria', priority: pick(priorities), status: 'PENDING', dueDate: new Date(NOW.getTime() + rnd(1, 15, 0) * 86400000) } })
   }
 
-  // Atualiza acumuladores nos animais via SQL para performance
-  await prisma.$executeRaw`
-    UPDATE animals a
-    SET
-      "totalFeedConsumedKg" = agg.kg,
-      "estimatedFeedCost"   = agg.cost
-    FROM (
-      SELECT "animalId", SUM("consumedKg") AS kg, SUM("estimatedCost") AS cost
-      FROM animal_feed_consumptions afc
-      JOIN feed_sessions fs ON fs.id = afc."feedSessionId"
-      WHERE fs."farmId" = ${farm.id}
-      GROUP BY "animalId"
-    ) agg
-    WHERE a.id = agg."animalId"
-  `
-
-  console.log(`✅  Sessões de alimentação: ${feedSessionBatch.length} (${consumptionBatch.length} consumos individuais)`)
-
-  // ── 15. Sumário final ─────────────────────────────────
-  const [totAnimals, totMilk, totSessions, totWeights, totHealth, totRepro, totAlerts, totPhotos, totFeedSessions] = await Promise.all([
-    prisma.animal.count({ where: { farmId: farm.id } }),
-    prisma.milkRecord.count({ where: { farmId: farm.id } }),
-    prisma.milkingSession.count({ where: { farmId: farm.id } }),
-    prisma.weightRecord.count({ where: { animal: { farmId: farm.id } } }),
-    prisma.healthEvent.count({ where: { animal: { farmId: farm.id } } }),
-    prisma.reproduction.count({ where: { animal: { farmId: farm.id } } }),
-    prisma.alert.count({ where: { farmId: farm.id } }),
-    prisma.animalPhoto.count({ where: { animal: { farmId: farm.id } } }),
-    prisma.feedSession.count({ where: { farmId: farm.id } }),
+  const [sessions, participants, animals] = await Promise.all([
+    prisma.milkingSession.count({ where: { farmId: FARM_ID } }),
+    prisma.milkingSessionParticipant.count({ where: { session: { farmId: FARM_ID } } }),
+    prisma.animal.count({ where: { farmId: FARM_ID } }),
   ])
 
-  console.log('\n🎉  Seed realístico concluído!')
-  console.log('══════════════════════════════════════════')
-  console.log(`🐄  Animais:              ${totAnimals}`)
-  console.log(`🥛  Sessões de ordenha:   ${totSessions}`)
-  console.log(`🥛  Registros individuais:${totMilk}`)
-  console.log(`⚖️   Pesagens:             ${totWeights}`)
-  console.log(`💉  Eventos de saúde:     ${totHealth}`)
-  console.log(`💕  Eventos reprodutivos: ${totRepro}`)
-  console.log(`🔔  Alertas:              ${totAlerts}`)
-  console.log(`📸  Fotos:                ${totPhotos}`)
-  console.log(`🌾  Sessões de ração:     ${totFeedSessions}`)
-  console.log('──────────────────────────────────────────')
-  console.log('📧  admin@saldanha.com.br        (OWNER)')
-  console.log('📧  gerente@saldanha.com.br      (MANAGER)')
-  console.log('📧  funcionario@saldanha.com.br  (WORKER)')
-  console.log('🔑  Senha: bovcontrol123')
-  console.log('══════════════════════════════════════════\n')
+  console.log('\nSeed concluido!')
+  console.log(`  Fazenda : ${farm.name} -- ${farm.city}/${farm.state}`)
+  console.log(`  Animais : ${animals}`)
+  console.log(`  Sessoes : ${sessions} (${sessions / 2} dias x 2 turnos)`)
+  console.log(`  Partic. : ${participants}`)
+  console.log('\nLogins (senha: bovcontrol123)')
+  console.log('  admin@perdigao.com.br')
+  console.log('  gerente@perdigao.com.br')
+  console.log('  operador@perdigao.com.br\n')
+
+  void farm
+  void lotSecas
+  void lotBezerr
+  void lotRecria
+  void lotEngord
+  void lotReprod
 }
 
 main()
-  .catch((e) => { console.error('❌  Erro no seed:', e); process.exit(1) })
+  .catch((e) => { console.error(e); process.exit(1) })
   .finally(() => prisma.$disconnect())

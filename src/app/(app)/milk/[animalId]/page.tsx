@@ -1,26 +1,25 @@
 import { notFound, redirect } from 'next/navigation'
-import Link   from 'next/link'
-import { auth }   from '@/lib/auth'
-import { getActiveFarm } from '@/lib/active-farm'
-import { prisma } from '@/lib/prisma'
+import { auth }              from '@/lib/auth'
+import { getActiveFarm }     from '@/lib/active-farm'
+import { prisma }            from '@/lib/prisma'
 
-import { getMilkRecordsByAnimal } from '@/modules/milk/queries'
-import { MilkRecordCard }    from '@/modules/milk/components/milk-record-card'
-import { PageHeader }        from '@/components/shared/page-header'
-import { SectionCard }       from '@/components/shared/section-card'
-import { EmptyState }        from '@/components/shared/empty-state'
-import { formatLiters }      from '@/lib/utils'
+import {
+  getAnimalMilkStats,
+  getAnimalParticipations,
+  getMilkRecordsByAnimal,
+} from '@/modules/milk/queries'
+import { MilkRecordCard }   from '@/modules/milk/components/milk-record-card'
+import { PageHeader }       from '@/components/shared/page-header'
+import { SectionCard }      from '@/components/shared/section-card'
+import { EmptyState }       from '@/components/shared/empty-state'
+import { formatLiters, formatDate } from '@/lib/utils'
 import { getCategoryLabel }  from '@/modules/shared/domain/animal-labels'
-import { MilkIcon, Plus }    from 'lucide-react'
-import { Button }            from '@/components/ui/button'
+import { MILK_SHIFT_LABELS } from '@/modules/shared/domain/animal-labels'
+import { MilkIcon, Droplets, CalendarDays, TrendingUp, Hash } from 'lucide-react'
 
 // ─── Metadata dinâmica ─────────────────────────────────────────
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ animalId: string }>
-}) {
+export async function generateMetadata({ params }: { params: Promise<{ animalId: string }> }) {
   const { animalId } = await params
   const session = await auth()
   if (!session) return {}
@@ -40,11 +39,7 @@ export async function generateMetadata({
 
 // ─── Page ──────────────────────────────────────────────────────
 
-export default async function MilkAnimalPage({
-  params,
-}: {
-  params: Promise<{ animalId: string }>
-}) {
+export default async function MilkAnimalPage({ params }: { params: Promise<{ animalId: string }> }) {
   const session = await auth()
   if (!session) redirect('/login')
 
@@ -55,34 +50,19 @@ export default async function MilkAnimalPage({
   const { farmId, role } = activeFarm
   const canDelete = ['OWNER', 'MANAGER'].includes(role)
 
-  const [animal, records] = await Promise.all([
+  const [animal, stats, participations, legacyRecords] = await Promise.all([
     prisma.animal.findFirst({
       where:  { id: animalId, farmId },
-      select: {
-        id:       true,
-        tag:      true,
-        name:     true,
-        category: true,
-        sex:      true,
-        status:   true,
-        lot:      { select: { id: true, name: true } },
-      },
+      select: { id: true, tag: true, name: true, category: true, sex: true, status: true, lot: { select: { id: true, name: true } } },
     }),
-    getMilkRecordsByAnimal(animalId, farmId, 50),
+    getAnimalMilkStats(animalId, farmId),
+    getAnimalParticipations(animalId, farmId, 60),
+    getMilkRecordsByAnimal(animalId, farmId, 20),
   ])
 
   if (!animal) notFound()
 
-  const totalLiters   = records.reduce((s, r) => s + r.liters, 0)
-  const today         = new Date()
-  const startOfDay    = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-  const todayLiters   = records
-    .filter((r) => new Date(r.recordedAt) >= startOfDay)
-    .reduce((s, r) => s + r.liters, 0)
-  const avgPerRecord  = records.length > 0 ? totalLiters / records.length : 0
-
   const categoryLabel = getCategoryLabel(animal.category, animal.sex)
-  const isActive      = animal.status === 'ACTIVE'
 
   return (
     <div className="space-y-4 pb-8">
@@ -92,55 +72,78 @@ export default async function MilkAnimalPage({
         description={`${animal.tag} · ${categoryLabel}${animal.lot ? ` · ${animal.lot.name}` : ''}`}
       />
 
-      {/* Estatísticas */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-xl border border-border bg-card p-3 text-center">
-          <div className="text-xl font-bold text-cyan-400 tabular-nums">
-            {formatLiters(todayLiters)}
-          </div>
-          <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">Hoje</div>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-3 text-center">
-          <div className="text-xl font-bold text-foreground tabular-nums">
-            {formatLiters(avgPerRecord)}
-          </div>
-          <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">Média</div>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-3 text-center">
-          <div className="text-xl font-bold text-foreground tabular-nums">
-            {records.length}
-          </div>
-          <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">Registros</div>
-        </div>
+      {/* ── Métricas de produção ────────────────────────── */}
+      <div className="grid grid-cols-2 gap-2">
+        <StatCard
+          icon={<Droplets className="size-3.5 text-cyan-400" />}
+          label="Vitalícia"
+          value={formatLiters(stats.totalLifetime)}
+          highlight
+        />
+        <StatCard
+          icon={<CalendarDays className="size-3.5 text-muted-foreground" />}
+          label="Últimos 30 dias"
+          value={formatLiters(stats.totalLast30Days)}
+        />
+        <StatCard
+          icon={<TrendingUp className="size-3.5 text-muted-foreground" />}
+          label="Ano atual"
+          value={formatLiters(stats.totalCurrentYear)}
+        />
+        <StatCard
+          icon={<Hash className="size-3.5 text-muted-foreground" />}
+          label="Participações"
+          value={String(stats.participationCount)}
+        />
       </div>
 
-      {/* Ação: registrar individual — modo legado */}
-      {isActive && (
-        <Button asChild className="w-full h-12 gap-2">
-          <Link href={`/milk/new?animalId=${animal.id}`}>
-            <Plus className="size-4" />
-            Registrar Produção Individual
-          </Link>
-        </Button>
-      )}
-
-      {/* Lista de registros */}
+      {/* ── Histórico de participações em ordenhas ──────── */}
       <SectionCard
-        title="Registros individuais"
-        subtitle={`${formatLiters(totalLiters)} total · ${records.length} ordenhas`}
+        title="Participações em ordenhas"
+        subtitle={`${stats.participationCount} ordenhas · ${formatLiters(stats.totalLifetime)} estimados`}
         noPadding
       >
-        {records.length === 0 ? (
+        {participations.length === 0 ? (
           <div className="p-4">
             <EmptyState
               icon={<MilkIcon />}
-              title="Sem registros individuais"
-              description="A produção desta vaca é registrada por sessão de ordenha da fazenda."
+              title="Sem participações registradas"
+              description="Esta vaca ainda não participou de nenhuma ordenha por sessão."
             />
           </div>
         ) : (
+          <div className="divide-y divide-border/40">
+            {participations.map((p) => (
+              <div key={`${p.sessionId}`} className="flex items-center justify-between px-4 py-2.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs text-muted-foreground w-20 shrink-0">
+                    {formatDate(p.date)}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {MILK_SHIFT_LABELS[p.shift] ?? p.shift}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {p.isEstimated && (
+                    <span className="text-[10px] text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded px-1.5 py-0.5">
+                      Estimado
+                    </span>
+                  )}
+                  <span className="text-sm font-bold tabular-nums text-cyan-400">
+                    {p.liters != null ? formatLiters(p.liters) : '—'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      {/* ── Registros individuais (legado) ──────────────── */}
+      {legacyRecords.length > 0 && (
+        <SectionCard title="Registros individuais (histórico)" noPadding>
           <div className="px-4 divide-y divide-border/40">
-            {records.map((record) => (
+            {legacyRecords.map((record) => (
               <MilkRecordCard
                 key={record.id}
                 record={record}
@@ -150,8 +153,29 @@ export default async function MilkAnimalPage({
               />
             ))}
           </div>
-        )}
-      </SectionCard>
+        </SectionCard>
+      )}
+    </div>
+  )
+}
+
+// ─── StatCard ─────────────────────────────────────────────────
+
+function StatCard({ icon, label, value, highlight = false }: {
+  icon:       React.ReactNode
+  label:      string
+  value:      string
+  highlight?: boolean
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-3 text-center space-y-1">
+      <div className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
+        {icon}
+        {label}
+      </div>
+      <div className={`text-xl font-bold tabular-nums ${highlight ? 'text-cyan-400' : 'text-foreground'}`}>
+        {value}
+      </div>
     </div>
   )
 }

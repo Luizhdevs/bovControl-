@@ -6,6 +6,7 @@ import { addDays }            from 'date-fns'
 import { prisma }             from '@/lib/prisma'
 import { auth }               from '@/lib/auth'
 import { requireFarmAccess }  from '@/lib/permissions'
+import { auditCreate, auditUpdate } from '@/lib/audit'
 import { createInviteSchema } from './schema'
 import type { ActionResult }  from './types'
 
@@ -57,7 +58,16 @@ export async function createInvite(
         expiresAt,
         createdById: session.user.id,
       },
-      select: { token: true },
+      select: { id: true, token: true },
+    })
+
+    auditCreate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Invite',
+      entityId: invite.id,
+      after:    { email, role },
+      metadata: { source: 'web' },
     })
 
     revalidatePath('/settings')
@@ -88,6 +98,15 @@ export async function revokeInvite(
     await prisma.invite.update({
       where: { id: inviteId },
       data:  { status: 'REVOKED' },
+    })
+
+    auditUpdate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Invite',
+      entityId: inviteId,
+      before:   { status: invite.status },
+      after:    { status: 'REVOKED' },
     })
 
     revalidatePath('/settings')
@@ -129,8 +148,9 @@ export async function acceptInvite(
       if (alreadyMember) throw new Error('Você já é membro desta fazenda.')
 
       // Cria vínculo farm-user
-      await tx.farmUser.create({
-        data: { farmId: invite.farmId, userId: session.user.id, role: invite.role },
+      const farmUser = await tx.farmUser.create({
+        data:   { farmId: invite.farmId, userId: session.user.id, role: invite.role },
+        select: { id: true, role: true },
       })
 
       // Marca como aceito — atomicamente evita replay
@@ -139,10 +159,18 @@ export async function acceptInvite(
         data:  { status: 'ACCEPTED', usedAt: new Date() },
       })
 
-      return { farmId: invite.farmId }
+      return { farmId: invite.farmId, farmUserId: farmUser.id, role: farmUser.role, inviteId: invite.id }
     })
 
-    return { success: true, data: result }
+    auditCreate({
+      farmId:   result.farmId,
+      userId:   session.user.id,
+      entity:   'FarmUser',
+      entityId: result.farmUserId,
+      metadata: { source: 'web', inviteId: result.inviteId, role: result.role },
+    })
+
+    return { success: true, data: { farmId: result.farmId } }
   } catch (error) {
     console.error('[acceptInvite]', error)
     const message = error instanceof Error ? error.message : 'Erro ao aceitar convite.'

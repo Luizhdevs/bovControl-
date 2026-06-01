@@ -9,6 +9,8 @@ const LOT_TYPES = [
   'CALF',
   'FATTENING',
   'MIXED',
+  'MATERNITY',
+  'BREEDING',
 ] as const
 
 export type LotTypeValue = typeof LOT_TYPES[number]

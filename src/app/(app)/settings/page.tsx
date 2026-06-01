@@ -6,10 +6,15 @@ import { getFarmInvites }  from '@/modules/invites/queries'
 import { getStorageStatus }    from '@/lib/storage-limits'
 import { STORAGE_PROVIDER_NAME } from '@/lib/storage/provider'
 import { getActiveFarm }         from '@/lib/active-farm'
+import { getOrCreateFarmSettings } from '@/modules/farm-settings/queries'
 import { InviteForm }      from '@/modules/invites/components/invite-form'
 import { InviteList }      from '@/modules/invites/components/invite-list'
+import { FarmSettingsForm } from '@/modules/farm-settings/components/farm-settings-form'
+import { getRecentActivity } from '@/modules/audit/queries'
+import { AuditLogItemRow }   from '@/modules/audit/components/audit-log-item'
 import { PageHeader }      from '@/components/shared/page-header'
-import { Building2, User, Users, UserPlus, HardDrive } from 'lucide-react'
+import Link                from 'next/link'
+import { Building2, User, Users, UserPlus, HardDrive, SlidersHorizontal, ClipboardList } from 'lucide-react'
 
 export const metadata = { title: 'Configurações | BovControl' }
 
@@ -29,15 +34,24 @@ export default async function SettingsPage() {
 
   const { farmId, role, farm } = activeFarm
 
-  const [isOwner, members, storageStatus] = await Promise.all([
+  const [isOwner, isManager, members, storageStatus, farmSettings, activeLots] = await Promise.all([
     canAccess(session.user.id, farmId, 'OWNER'),
+    canAccess(session.user.id, farmId, 'MANAGER'),
     prisma.farmUser.findMany({
       where:   { farmId },
       include: { user: { select: { name: true, email: true } } },
       orderBy: { joinedAt: 'asc' },
     }),
     getStorageStatus(farmId),
+    getOrCreateFarmSettings(farmId),
+    prisma.lot.findMany({
+      where:   { farmId, isActive: true },
+      select:  { id: true, name: true, type: true },
+      orderBy: { name: 'asc' },
+    }),
   ])
+
+  const recentActivity = isManager ? await getRecentActivity(farmId, 20) : []
 
   const actualInvites = isOwner ? await getFarmInvites(farmId) : []
 
@@ -60,6 +74,20 @@ export default async function SettingsPage() {
           <Row label="Estado"   value={farm.state} />
           <Row label="ID"       value={<code className="text-xs bg-muted px-1.5 py-0.5 rounded">{farm.id}</code>} />
         </dl>
+      </section>
+
+      {/* ── Parâmetros Gerais ───────────────────────────── */}
+      <section className="rounded-xl border border-border bg-card p-4 space-y-4">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <SlidersHorizontal className="size-4 text-primary" />
+          Parâmetros Gerais
+        </div>
+        <FarmSettingsForm
+          farmId={farmId}
+          settings={farmSettings}
+          lots={activeLots}
+          canEdit={isManager}
+        />
       </section>
 
       {/* ── Armazenamento ───────────────────────────────── */}
@@ -172,6 +200,36 @@ export default async function SettingsPage() {
           ))}
         </div>
       </section>
+
+      {/* ── Atividade Recente (MANAGER+) ───────────────── */}
+      {isManager && (
+        <section className="rounded-xl border border-border bg-card p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <ClipboardList className="size-4 text-primary" />
+              Atividade Recente
+              <span className="ml-1 text-xs font-normal text-muted-foreground">
+                últimas 20 ações
+              </span>
+            </div>
+            <Link href="/audit" className="text-xs text-primary hover:underline">
+              Ver tudo
+            </Link>
+          </div>
+
+          {recentActivity.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              Nenhuma ação registrada ainda.
+            </p>
+          ) : (
+            <div className="divide-y divide-border/40 -mx-4 px-4">
+              {recentActivity.map((log) => (
+                <AuditLogItemRow key={log.id} log={log} showUser compact />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* ── Convites (OWNER only) ──────────────────────── */}
       {isOwner && (

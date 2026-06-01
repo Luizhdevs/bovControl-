@@ -17,7 +17,7 @@
 
 import { useEffect, useRef } from 'react'
 import { useMilkQueue, type MilkQueueItem } from '@/stores/milk-queue'
-import { registerMilkingSession } from '@/modules/milk/actions'
+import { registerMilkingSessionWithParticipants } from '@/modules/milk/actions'
 
 const CHANNEL_NAME = 'bovcontrol-sync'
 const CONCURRENCY  = 3
@@ -57,14 +57,19 @@ export function SyncProvider() {
           batch.map(async (item) => {
             markSyncing(item.id)
             try {
-              const result = await registerMilkingSession(item.farmId, {
-                shift:          item.shift,
-                date:           new Date(item.date),
-                totalLiters:    item.totalLiters,
-                milkingCows:    item.milkingCows,
-                notes:          item.notes,
-                idempotencyKey: item.idempotencyKey,
-              })
+              const result = await registerMilkingSessionWithParticipants(
+                item.farmId,
+                {
+                  shift:          item.shift,
+                  date:           new Date(item.date),
+                  totalLiters:    item.totalLiters,
+                  milkingCows:    item.milkingCows,
+                  notes:          item.notes,
+                  idempotencyKey: item.idempotencyKey,
+                },
+                item.participantIds ?? undefined,
+                'sync',
+              )
 
               if (result.success) {
                 markSynced(item.id)

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { prisma }             from '@/lib/prisma'
 import { auth }               from '@/lib/auth'
 import { requireFarmAccess }  from '@/lib/permissions'
+import { auditUpdate }        from '@/lib/audit'
 import type { ActionResult }  from './types'
 
 // ─── Resolver alerta ──────────────────────────────────────
@@ -26,6 +27,16 @@ export async function resolveAlert(
     await prisma.alert.update({
       where: { id: alertId },
       data:  { status: 'RESOLVED', resolvedAt: new Date() },
+    })
+
+    auditUpdate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Alert',
+      entityId: alertId,
+      before:   { status: alert.status },
+      after:    { status: 'RESOLVED' },
+      metadata: { source: 'web', priority: alert.priority, alertType: alert.type },
     })
 
     revalidatePath('/alerts')
@@ -57,6 +68,16 @@ export async function dismissAlert(
     await prisma.alert.update({
       where: { id: alertId },
       data:  { status: 'DISMISSED' },
+    })
+
+    auditUpdate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Alert',
+      entityId: alertId,
+      before:   { status: alert.status },
+      after:    { status: 'DISMISSED' },
+      metadata: { source: 'web', priority: alert.priority, alertType: alert.type },
     })
 
     revalidatePath('/alerts')

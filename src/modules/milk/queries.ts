@@ -200,6 +200,167 @@ export async function getWeeklyProduction(
   return result
 }
 
+// ─── Animais do lote principal de produção ───────────────────
+
+export type ProductionLotAnimal = {
+  id:         string
+  tag:        string
+  name:       string | null
+  milkStatus: string
+  category:   string
+}
+
+export async function getProductionLotAnimals(
+  farmId: string,
+): Promise<{ lotId: string | null; lotName: string | null; animals: ProductionLotAnimal[] }> {
+  const settings = await prisma.farmSettings.findUnique({
+    where:   { farmId },
+    select:  { mainProductionLotId: true },
+  })
+
+  if (!settings?.mainProductionLotId) {
+    return { lotId: null, lotName: null, animals: [] }
+  }
+
+  const lot = await prisma.lot.findFirst({
+    where:  { id: settings.mainProductionLotId, farmId, isActive: true },
+    select: {
+      id:   true,
+      name: true,
+      animals: {
+        where:   { status: 'ACTIVE', sex: 'FEMALE' },
+        select:  { id: true, tag: true, name: true, milkStatus: true, category: true },
+        orderBy: { tag: 'asc' },
+      },
+    },
+  })
+
+  if (!lot) return { lotId: null, lotName: null, animals: [] }
+
+  return {
+    lotId:   lot.id,
+    lotName: lot.name,
+    animals: lot.animals.map((a) => ({
+      id:         a.id,
+      tag:        a.tag,
+      name:       a.name,
+      milkStatus: a.milkStatus,
+      category:   a.category,
+    })),
+  }
+}
+
+// ─── Participantes de uma sessão ──────────────────────────────
+
+export type SessionParticipant = {
+  id:         string
+  animalId:   string
+  tag:        string
+  name:       string | null
+  liters:     number | null
+  isEstimated: boolean
+}
+
+export async function getSessionParticipants(
+  sessionId: string,
+  farmId:    string,
+): Promise<SessionParticipant[]> {
+  const participants = await prisma.milkingSessionParticipant.findMany({
+    where:   { sessionId, session: { farmId } },
+    include: { animal: { select: { tag: true, name: true } } },
+    orderBy: { animal: { tag: 'asc' } },
+  })
+
+  return participants.map((p) => ({
+    id:          p.id,
+    animalId:    p.animalId,
+    tag:         p.animal.tag,
+    name:        p.animal.name,
+    liters:      p.liters,
+    isEstimated: p.isEstimated,
+  }))
+}
+
+// ─── Métricas de produção por animal ─────────────────────────
+
+export type AnimalMilkStats = {
+  totalLifetime:       number  // litros vitalícios (todas participações estimadas)
+  totalLast30Days:     number  // litros nos últimos 30 dias
+  totalCurrentYear:    number  // litros no ano corrente
+  participationCount:  number  // total de ordenhas participadas
+  lastParticipationAt: Date | null
+}
+
+export async function getAnimalMilkStats(
+  animalId: string,
+  farmId:   string,
+): Promise<AnimalMilkStats> {
+  const now          = new Date()
+  const startOf30d   = new Date(now.getTime() - 30 * 86_400_000)
+  const startOfYear  = new Date(now.getFullYear(), 0, 1)
+
+  type RawRow = {
+    total_lifetime:    unknown
+    total_30d:         unknown
+    total_year:        unknown
+    participation_count: unknown
+    last_at:           Date | null
+  }
+
+  const rows = await prisma.$queryRaw<RawRow[]>`
+    SELECT
+      COALESCE(SUM(p.liters), 0)                                                    AS total_lifetime,
+      COALESCE(SUM(CASE WHEN s.date >= ${startOf30d}::date THEN p.liters ELSE 0 END), 0) AS total_30d,
+      COALESCE(SUM(CASE WHEN s.date >= ${startOfYear}::date THEN p.liters ELSE 0 END), 0) AS total_year,
+      COUNT(*)                                                                       AS participation_count,
+      MAX(s.date)                                                                    AS last_at
+    FROM milking_session_participants p
+    JOIN milking_sessions s ON s.id = p."sessionId"
+    WHERE p."animalId" = ${animalId}
+      AND s."farmId"   = ${farmId}
+  `
+
+  const row = rows[0]
+  return {
+    totalLifetime:       Number(row?.total_lifetime  ?? 0),
+    totalLast30Days:     Number(row?.total_30d       ?? 0),
+    totalCurrentYear:    Number(row?.total_year      ?? 0),
+    participationCount:  Number(row?.participation_count ?? 0),
+    lastParticipationAt: row?.last_at ?? null,
+  }
+}
+
+// ─── Participações recentes de um animal ──────────────────────
+
+export type AnimalParticipation = {
+  sessionId:   string
+  date:        Date
+  shift:       string
+  liters:      number | null
+  isEstimated: boolean
+}
+
+export async function getAnimalParticipations(
+  animalId: string,
+  farmId:   string,
+  limit     = 30,
+): Promise<AnimalParticipation[]> {
+  const rows = await prisma.milkingSessionParticipant.findMany({
+    where:   { animalId, session: { farmId } },
+    include: { session: { select: { date: true, shift: true } } },
+    orderBy: { session: { date: 'desc' } },
+    take:    limit,
+  })
+
+  return rows.map((r) => ({
+    sessionId:   r.sessionId,
+    date:        r.session.date,
+    shift:       r.session.shift,
+    liters:      r.liters,
+    isEstimated: r.isEstimated,
+  }))
+}
+
 // ─── Registros individuais por animal (Fase 2 / legado) ───────
 
 export async function getMilkRecordsByAnimal(

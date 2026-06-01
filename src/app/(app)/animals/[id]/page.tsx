@@ -5,8 +5,11 @@ import { auth } from '@/lib/auth'
 import { getActiveFarm } from '@/lib/active-farm'
 
 import { getAnimalById, getLotsForSelect }         from '@/modules/animals/queries'
+import { getAnimalMilkStats }                      from '@/modules/milk/queries'
 import { getHealthEventsByAnimal }                 from '@/modules/health-events/queries'
 import { getAnimalFeedHistory }                    from '@/modules/feed/queries'
+import { getEntityHistory }                        from '@/modules/audit/queries'
+import { AuditTimeline }                           from '@/modules/audit/components/audit-timeline'
 import { AnimalFeedSection }                       from '@/modules/feed/components/animal-feed-section'
 import { HealthEventTimeline }                     from '@/modules/health-events/components/health-event-timeline'
 import { AnimalQuickActions, AddPhotoButton }  from '@/modules/animals/components/animal-quick-actions'
@@ -24,7 +27,7 @@ import {
   BIRTH_TYPE_LABELS,
   LOT_TYPE_LABELS,
 } from '@/lib/utils'
-import { Scale, MilkIcon, Heart, Camera, Wheat } from 'lucide-react'
+import { Scale, MilkIcon, Heart, Camera, Wheat, ClipboardList } from 'lucide-react'
 
 // ─── Metadata dinâmica ─────────────────────────────────────
 
@@ -64,12 +67,16 @@ export default async function AnimalDetailPage({
   if (!activeFarm) redirect('/onboarding')
   const { farmId, role } = activeFarm
 
+  const canViewAudit = role !== 'VIEWER'
+
   // Carrega dados em paralelo
-  const [animal, lots, healthEvents, feedHistory] = await Promise.all([
+  const [animal, lots, healthEvents, feedHistory, milkStats, auditHistory] = await Promise.all([
     getAnimalById(id, farmId),
     getLotsForSelect(farmId),
     getHealthEventsByAnimal(id, farmId, 10),
     getAnimalFeedHistory(id, farmId, 5),
+    getAnimalMilkStats(id, farmId),
+    canViewAudit ? getEntityHistory(id, farmId, 20) : Promise.resolve([]),
   ])
 
   if (!animal) notFound()
@@ -243,6 +250,30 @@ export default async function AnimalDetailPage({
         </div>
       </div>
 
+      {/* Produção de Leite (vacas e novilhas fêmeas com participações) */}
+      {animal.sex === 'FEMALE' && milkStats.participationCount > 0 && (
+        <SectionCard
+          title="Produção de Leite"
+          subtitle="Estimativas por distribuição de ordenha"
+          action={
+            <Link href={`/milk/${id}`} className="text-xs text-primary hover:underline">
+              Ver histórico
+            </Link>
+          }
+        >
+          <InfoRows>
+            <InfoRow
+              label="Vitalícia"
+              value={<span className="text-cyan-400 font-bold tabular-nums">{formatLiters(milkStats.totalLifetime)}</span>}
+              highlight
+            />
+            <InfoRow label="Ano atual"       value={<span className="tabular-nums">{formatLiters(milkStats.totalCurrentYear)}</span>} />
+            <InfoRow label="Últimos 30 dias" value={<span className="tabular-nums">{formatLiters(milkStats.totalLast30Days)}</span>} />
+            <InfoRow label="Participações"   value={`${milkStats.participationCount} ordenhas`} />
+          </InfoRows>
+        </SectionCard>
+      )}
+
       {/* Reprodução (se houver) */}
       {animal.reproductions.length > 0 && (
         <SectionCard
@@ -302,6 +333,25 @@ export default async function AnimalDetailPage({
           />
         </div>
       </SectionCard>
+
+      {/* Histórico de auditoria (OWNER / MANAGER) */}
+      {canViewAudit && (
+        <SectionCard
+          title="Histórico"
+          subtitle={auditHistory.length > 0 ? `${auditHistory.length} registro${auditHistory.length !== 1 ? 's' : ''}` : undefined}
+          action={
+            <Link href={`/audit?entity=Animal`} className="text-xs text-primary hover:underline flex items-center gap-1">
+              <ClipboardList className="size-3" />
+              Ver auditoria
+            </Link>
+          }
+          noPadding
+        >
+          <div className="px-4 pb-2">
+            <AuditTimeline logs={auditHistory} showUser={['OWNER', 'MANAGER'].includes(role)} />
+          </div>
+        </SectionCard>
+      )}
 
       {/* Timeline de fotos */}
       <SectionCard

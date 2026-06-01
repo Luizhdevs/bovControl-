@@ -35,12 +35,13 @@ export interface MilkQueueItem {
   idempotencyKey: string   // UUID enviado ao servidor para deduplicação
 
   // Dados da sessão de ordenha
-  farmId:      string
-  shift:       'MORNING' | 'AFTERNOON'
-  date:        string   // 'YYYY-MM-DD'
-  totalLiters: number
-  milkingCows: number
-  notes:       string | null
+  farmId:          string
+  shift:           'MORNING' | 'AFTERNOON'
+  date:            string   // 'YYYY-MM-DD'
+  totalLiters:     number
+  milkingCows:     number
+  notes:           string | null
+  participantIds:  string[] | null  // IDs dos animais participantes (null = modo sem seleção)
 
   // Metadados de sincronização
   status:        QueueItemStatus
@@ -182,10 +183,11 @@ export const useMilkQueue = create<MilkQueueStore>()(
     }),
     {
       name:    'bovcontrol-milk-queue',
-      version: 3,
+      version: 4,
       migrate: (persisted, version) => {
-        // v1 e v2 tinham shape incompatível (animalId/tag/name) — descarta
-        if (version < 3) return { queue: [] }
+        // v1/v2: shape incompatível — descarta
+        // v3→v4: participantIds adicionado — descarta para garantir shape limpo
+        if (version < 4) return { queue: [] }
         return persisted as MilkQueueStore
       },
     },
