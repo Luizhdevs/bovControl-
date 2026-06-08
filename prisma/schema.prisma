@@ -94,6 +94,7 @@ model Farm {
   feedTypes        FeedType[]
   feedSessions     FeedSession[]
   settings         FarmSettings?
+  earTagTemplates  EarTagTemplate[]
 
   @@map("farms")
 }
@@ -616,4 +617,48 @@ enum InviteStatus {
   ACCEPTED
   REVOKED
   EXPIRED
+}
+
+// ─── ETIQUETAS DE BRINCO ────────────────────────────────────
+// Template configurável para impressão de etiquetas dos animais.
+// layoutJson guarda posições e variantes visuais para extensibilidade futura.
+
+model EarTagTemplate {
+  id     String @id @default(cuid())
+  farmId String
+  farm   Farm   @relation(fields: [farmId], references: [id], onDelete: Cascade)
+
+  name String
+
+  // Dimensões em milímetros
+  widthMm   Float @default(50)
+  heightMm  Float @default(25)
+  paddingMm Float @default(3)
+
+  // Tipografia
+  fontSizeMain      Int   @default(14)
+  fontSizeSecondary Int   @default(9)
+
+  // QR Code
+  qrSizeMm Float @default(18)
+
+  // Campos visíveis
+  showAnimalName Boolean @default(false)
+  showAnimalTag  Boolean @default(true)
+  showFarmName   Boolean @default(false)
+  showBorder     Boolean @default(true)
+
+  // Aparência
+  orientation String @default("landscape") // "portrait" | "landscape"
+  bgColor     String @default("#FFFFFF")
+  textColor   String @default("#000000")
+
+  // Configurações de layout estendidas (posição do QR, variante visual, etc.)
+  layoutJson Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([farmId])
+  @@map("ear_tag_templates")
 }

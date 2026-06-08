@@ -45,6 +45,7 @@ import {
   AlertTriangle,
   Loader2,
   CheckCircle2,
+  Tag,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { LotSelectOption } from '../types'
@@ -621,6 +622,12 @@ export function AnimalQuickActions({
       href:  `/animals/${animalId}/reproduction`,
       disabled: !guards.reproduction.allowed,
       disabledReason: guards.reproduction.reason,
+    },
+    {
+      id:    'ear-tag',
+      icon:  Tag,
+      label: 'Etiqueta',
+      href:  `/ear-tags/print?animalId=${animalId}`,
     },
   ]
 

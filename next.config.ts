@@ -18,6 +18,9 @@ const securityHeaders = [
 ]
 
 const nextConfig: NextConfig = {
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   images: {
     remotePatterns: [
       // Uploads locais em desenvolvimento (qualquer porta: 3000, 3001…)

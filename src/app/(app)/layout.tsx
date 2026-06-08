@@ -20,6 +20,7 @@ import {
   Settings,
   Wheat,
   ClipboardList,
+  Tag,
 } from 'lucide-react'
 import { cn }             from '@/lib/utils'
 import { SignOutButton }  from '@/components/shared/sign-out-button'
@@ -37,6 +38,7 @@ const NAV_ITEMS = [
   { href: '/lots',           icon: Layers2,         label: 'Lotes'      },
   { href: '/pastures',       icon: MapPin,          label: 'Pastos'     },
   { href: '/feed-types',     icon: Wheat,           label: 'Rações'     },
+  { href: '/ear-tags',       icon: Tag,             label: 'Etiquetas'  },
   { href: '/alerts',         icon: Bell,            label: 'Alertas', hasBadge: true },
   { href: '/settings',       icon: Settings,        label: 'Config.'    },
 ] as const

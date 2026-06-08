@@ -27,7 +27,7 @@ import {
   BIRTH_TYPE_LABELS,
   LOT_TYPE_LABELS,
 } from '@/lib/utils'
-import { Scale, MilkIcon, Heart, Camera, Wheat, ClipboardList } from 'lucide-react'
+import { Scale, MilkIcon, Heart, Camera, Wheat, ClipboardList, Tag } from 'lucide-react'
 
 // ─── Metadata dinâmica ─────────────────────────────────────
 
@@ -94,6 +94,15 @@ export default async function AnimalDetailPage({
         backHref="/animals"
         title={animal.tag}
         description={animal.name ?? undefined}
+        actions={
+          <Link
+            href={`/ear-tags/print?animalId=${animal.id}`}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Tag className="size-3.5" />
+            Etiqueta
+          </Link>
+        }
       />
 
       {/* Foto de capa */}
