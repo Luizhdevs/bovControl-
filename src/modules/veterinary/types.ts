@@ -82,3 +82,38 @@ export type VeterinaryPermissions = {
   canExport:        boolean
   canResolveAlerts: boolean
 }
+
+// ─── Match ────────────────────────────────────────────────
+
+export type VeterinaryMatchStatus =
+  | 'EXACT_EXTERNAL_CODE'
+  | 'EXACT_TAG'
+  | 'EXACT_NAME'
+  | 'NORMALIZED_NAME'
+  | 'DUPLICATE_CANDIDATES'
+  | 'UNMATCHED'
+  | 'ERROR'
+
+export interface VeterinaryMatchCandidate {
+  animalId: string
+  tag:      string
+  name:     string | null
+  reason:   VeterinaryMatchStatus
+}
+
+// ─── Review ───────────────────────────────────────────────
+
+export type VeterinarySnapshotRaw = {
+  original:    Record<string, string>
+  matchStatus: VeterinaryMatchStatus
+  candidates:  VeterinaryMatchCandidate[]
+  parseError?: string
+}
+
+export type VeterinaryImportReview = {
+  report:              VeterinaryReportWithStats
+  autoMatched:         VeterinarySnapshotWithAnimal[]
+  pendingReview:       VeterinarySnapshotWithAnimal[]
+  unmatched:           VeterinaryAnimalSnapshot[]
+  parseErrors:         VeterinaryAnimalSnapshot[]
+}

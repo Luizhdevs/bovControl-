@@ -57,6 +57,25 @@ export const veterinarySnapshotRowSchema = z.object({
 
 export type VeterinarySnapshotRowInput = z.infer<typeof veterinarySnapshotRowSchema>
 
+// ─── Criação de draft via CSV ─────────────────────────────
+
+const MAX_CSV_BYTES = 2 * 1024 * 1024 // 2 MB
+
+export const createVeterinaryReportDraftSchema = z.object({
+  reportDate:        z.coerce.date({ required_error: 'Informe a data do relatório' }),
+  sourceSystem:      z.enum(['PRODAP', 'ZIL', 'MANUAL', 'CSV', 'OTHER']).default('PRODAP'),
+  technicianName:    z.string().trim().max(100).optional().nullable(),
+  externalFarmName:  z.string().trim().max(100).optional().nullable(),
+  externalOwnerName: z.string().trim().max(100).optional().nullable(),
+  originalFilename:  z.string().max(255, 'Nome do arquivo muito longo').default('upload.csv'),
+  csvContent:        z
+    .string()
+    .min(10, 'Conteúdo CSV parece vazio')
+    .max(MAX_CSV_BYTES, 'CSV muito grande — máximo 2 MB'),
+})
+
+export type CreateVeterinaryReportDraftInput = z.infer<typeof createVeterinaryReportDraftSchema>
+
 // ─── Schema de vínculo manual animal ↔ snapshot ──────────
 
 export const linkSnapshotSchema = z.object({

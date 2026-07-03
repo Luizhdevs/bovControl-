@@ -287,5 +287,53 @@ export async function getUnmatchedSnapshots(
   })
 }
 
+// ─── Revisão completa de um import draft ─────────────────
+
+export async function getVeterinaryImportReview(
+  reportId: string,
+  farmId:   string,
+): Promise<import('./types').VeterinaryImportReview | null> {
+  const report = await getVeterinaryReportById(reportId, farmId)
+  if (!report) return null
+
+  const allSnapshots = await prisma.veterinaryAnimalSnapshot.findMany({
+    where:   { reportId, farmId },
+    include: {
+      animal: {
+        select: { id: true, tag: true, name: true, category: true, milkStatus: true },
+      },
+    },
+    orderBy: [{ reportGroup: 'asc' }, { animalName: 'asc' }],
+  })
+
+  const autoMatched:   VeterinarySnapshotWithAnimal[]  = []
+  const pendingReview: VeterinarySnapshotWithAnimal[]  = []
+  const unmatched:     VeterinaryAnimalSnapshot[]      = []
+  const parseErrors:   VeterinaryAnimalSnapshot[]      = []
+
+  for (const snap of allSnapshots) {
+    const raw = snap.rawRow as { matchStatus?: string } | null
+    const status = raw?.matchStatus as string | undefined
+
+    if (status === 'ERROR') {
+      parseErrors.push(snap)
+    } else if (snap.animalId !== null) {
+      // Strong match — auto-filled
+      autoMatched.push(snap as VeterinarySnapshotWithAnimal)
+    } else if (
+      status === 'EXACT_NAME' ||
+      status === 'NORMALIZED_NAME' ||
+      status === 'DUPLICATE_CANDIDATES'
+    ) {
+      // Weak or ambiguous — needs review, but candidates exist
+      pendingReview.push(snap as VeterinarySnapshotWithAnimal)
+    } else {
+      unmatched.push(snap)
+    }
+  }
+
+  return { report, autoMatched, pendingReview, unmatched, parseErrors }
+}
+
 // Importa o tipo diretamente do Prisma para uso no retorno da última função
 import type { VeterinaryAnimalSnapshot } from '@prisma/client'

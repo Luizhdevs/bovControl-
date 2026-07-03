@@ -1,0 +1,13 @@
+Código,Nome,NP,Último Parto,RP,Sx,Inseminação,Nº,Dias,Reprodutor,Dt Parto Provável,Pico/Sc,Prod/Sc,Raça,Pai,C,T,Ocorrência,Descarte,Dias de mamite,CCS x 1000,Grupo
+101,MIMOSA,3,15/03/23,,,,,,,,22,18,Gir,TOURO XYZ,3.0,,,,0,80,Matrizes vazias atrasadas
+102,BELEZA,4,10/01/23,,,,,,,,18,14,Holandês,ZEUS,2.5,,,Sim,,210,Matrizes vazias atrasadas
+103,ESTRELA,2,20/05/23,,,25/06/23,1,38,ZEUS JR,,20,17,Gir x HO,ZEUS JR,3.5,,,,0,90,Matrizes inseminadas a mais de 30 dias
+104,FLORA,5,08/11/22,,,,,,,,16,12,Gir,MARAJÁ,2.0,,,Sim,5,580,Matrizes vazias normais com mais de 45 dias paridas
+105,AURORA,3,22/07/23,,,10/07/23,2,55,PRÍNCIPE,,25,21,Holandês,PRÍNCIPE,3.0,,,,0,60,Matrizes inseminadas a mais de 30 dias
+106,VITÓRIA,6,14/04/23,,,,,,,,30,24,Gir x HO,ASTRO,2.5,,,,12,950,Matrizes a secar
+107,DIANA,2,,,,,01/03/23,1,120,ATLAS,01/12/23,,,Gir,ATLAS,3.5,,,,0,50,Matrizes em lactação gestantes
+108,JADE,4,01/09/22,,,,,,,20/10/23,,28,22,Gir x HO,ZEUS,2.0,,Mamite recorrente,Sim,18,1200,Matrizes secas vazias
+109,SORTE,3,12/06/23,,,20/08/23,1,41,TOURO A,,19,15,Holandês,TOURO A,3.0,,,,0,120,Matrizes inseminadas a mais de 30 dias
+110,ESPERANÇA,1,,,,,15/05/23,1,98,ZEUS JR,01/02/24,,Gir,ZEUS JR,3.5,,,,0,45,Novilhas gestantes
+111,MAJESTADE,5,03/08/23,,,,,,,30/10/23,32,28,Gir x HO,PRÍNCIPE,2.5,,,,0,70,Amojadas
+112,RUBI,7,25/10/23,Sim,,,,,,10/09/24,,,,Holandês,ASTRO,2.0,,Retenção placenta,,140,Matrizes secas gestantes
