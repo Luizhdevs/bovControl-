@@ -37,7 +37,7 @@ export const createLotSchema = z.object({
     .max(9999, 'Capacidade muito alta')
     .optional()
     .nullable(),
-  pastureId:    z.string().cuid('ID de pasto inválido').optional().nullable(),
+  pastureId:    z.string().min(1, 'ID de pasto inválido').optional().nullable(),
   observations: z.string().max(500, 'Máximo 500 caracteres').optional().nullable(),
 })
 

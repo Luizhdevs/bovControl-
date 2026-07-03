@@ -60,6 +60,21 @@ export async function createFarm(
 
   const { name, city, state } = parsed.data
 
+  // Guard: verificar se o usuário já possui fazenda com nome equivalente
+  // (após trim + collapse de espaços internos + case-insensitive)
+  const normalizedInput = name.toLowerCase()
+  const userFarms = await prisma.farmUser.findMany({
+    where:  { userId: session.user.id },
+    select: { farm: { select: { name: true } } },
+  })
+  const duplicate = userFarms.some(
+    ({ farm }) =>
+      farm.name.trim().replace(/\s+/g, ' ').toLowerCase() === normalizedInput,
+  )
+  if (duplicate) {
+    return { success: false, error: `Você já possui uma fazenda com o nome "${name}".` }
+  }
+
   const farm = await prisma.$transaction(async (tx) => {
     const f = await tx.farm.create({
       data: { name, city: city || null, state },

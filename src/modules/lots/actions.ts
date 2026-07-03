@@ -4,6 +4,7 @@ import { revalidatePath }    from 'next/cache'
 import { prisma }            from '@/lib/prisma'
 import { auth }              from '@/lib/auth'
 import { requireFarmAccess } from '@/lib/permissions'
+import { Prisma }            from '@prisma/client'
 
 // Regras de domínio compartilhadas — NENHUMA regra de negócio definida aqui
 import {
@@ -74,6 +75,9 @@ export async function createLot(
 
     return { success: true, data: { id: lot.id } }
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return { success: false, error: 'Já existe um lote com esse nome nesta fazenda.' }
+    }
     console.error('[createLot]', error)
     return { success: false, error: 'Erro ao criar lote. Tente novamente.' }
   }
@@ -138,6 +142,9 @@ export async function updateLot(
 
     return { success: true, data: undefined }
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return { success: false, error: 'Já existe um lote com esse nome nesta fazenda.' }
+    }
     console.error('[updateLot]', error)
     return { success: false, error: 'Erro ao atualizar lote. Tente novamente.' }
   }
