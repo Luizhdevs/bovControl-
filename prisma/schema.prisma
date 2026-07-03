@@ -19,11 +19,11 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts        Account[]
-  sessions        Session[]
-  farmUsers       FarmUser[]
-  sentInvites     Invite[]       @relation("InviteCreator")
-  feedSessions    FeedSession[]  @relation("FeedCreator")
+  accounts     Account[]
+  sessions     Session[]
+  farmUsers    FarmUser[]
+  sentInvites  Invite[]      @relation("InviteCreator")
+  feedSessions FeedSession[] @relation("FeedCreator")
 
   @@map("users")
 }
@@ -80,21 +80,22 @@ model Farm {
   updatedAt DateTime @updatedAt
 
   // ── Controle de armazenamento ───────────────────────────
-  // Mantidos sincronizados via $transaction em todo upload/delete.
   storageUsedMb Float @default(0)
   imageCount    Int   @default(0)
 
-  users            FarmUser[]
-  animals          Animal[]
-  lots             Lot[]
-  pastures         Pasture[]
-  alerts           Alert[]
-  invites          Invite[]
-  milkingSessions  MilkingSession[]
-  feedTypes        FeedType[]
-  feedSessions     FeedSession[]
-  settings         FarmSettings?
-  earTagTemplates  EarTagTemplate[]
+  users               FarmUser[]
+  animals             Animal[]
+  lots                Lot[]
+  pastures            Pasture[]
+  alerts              Alert[]
+  invites             Invite[]
+  milkingSessions     MilkingSession[]
+  feedTypes           FeedType[]
+  feedSessions        FeedSession[]
+  settings            FarmSettings?
+  earTagTemplates     EarTagTemplate[]
+  veterinaryReports   VeterinaryReport[]
+  veterinarySnapshots VeterinaryAnimalSnapshot[]
 
   @@map("farms")
 }
@@ -104,22 +105,28 @@ model Farm {
 // Criado automaticamente no primeiro acesso via getOrCreateFarmSettings().
 
 model FarmSettings {
-  id                     String   @id @default(cuid())
-  farmId                 String   @unique
+  id     String @id @default(cuid())
+  farmId String @unique
 
   // Lote principal de produção leiteira (escolha explícita do operador)
-  mainProductionLotId    String?
+  mainProductionLotId String?
 
   // Feature flags operacionais
-  enableMilkParticipants Boolean  @default(true)   // habilita seleção de participantes da ordenha
-  autoUpdateMilkStatus   Boolean  @default(true)   // atualiza milkStatus ao mover animal de lote
-  useEstimatedMilkPerCow Boolean  @default(true)   // distribui litros proporcionalmente por vaca
+  enableMilkParticipants Boolean @default(true) // habilita seleção de participantes da ordenha
+  autoUpdateMilkStatus   Boolean @default(true) // atualiza milkStatus ao mover animal de lote
+  useEstimatedMilkPerCow Boolean @default(true) // distribui litros proporcionalmente por vaca
 
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  // ── Parâmetros do módulo veterinário ─────────────────────
+  // Todos nullable — se null, o sistema usa os padrões definidos em constants.ts
+  ccsAlertThreshold Float? // CCS x 1000 para disparar alerta HIGH_CCS
+  mastitisDaysAlert Int? // Dias de mamite para disparar MASTITIS_FOLLOW_UP
+  emptyDaysAlert    Int? // Dias vazia para classificar como EMPTY_COW_LATE
 
-  farm              Farm  @relation(fields: [farmId], references: [id], onDelete: Cascade)
-  mainProductionLot Lot?  @relation("MainProductionLot", fields: [mainProductionLotId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  farm              Farm @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  mainProductionLot Lot? @relation("MainProductionLot", fields: [mainProductionLotId], references: [id])
 
   @@map("farm_settings")
 }
@@ -143,7 +150,7 @@ model FarmUser {
 model Animal {
   id           String       @id @default(cuid())
   farmId       String
-  tag          String       // Brinco gerado automaticamente: BOV-0001
+  tag          String // Brinco gerado automaticamente: BOV-0001
   name         String?
   sex          Sex
   category     Category
@@ -165,16 +172,25 @@ model Animal {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
-  farm             Farm         @relation(fields: [farmId], references: [id])
-  lot              Lot?         @relation(fields: [lotId], references: [id])
-  mother           Animal?      @relation("Mother", fields: [motherId], references: [id])
-  maternalChildren Animal[]     @relation("Mother")
-  father           Animal?      @relation("Father", fields: [fatherId], references: [id])
-  paternalChildren Animal[]     @relation("Father")
-
   // Acumuladores de ração — atualizados em $transaction em cada FeedSession
   totalFeedConsumedKg Float @default(0)
   estimatedFeedCost   Float @default(0)
+
+  // ── Dados veterinários externos ──────────────────────────
+  // Atualizados somente após revisão e confirmação de import veterinário.
+  // Nunca sobrescrever sem checar se o valor do relatório é mais recente.
+  externalCode           String? // Identificador no sistema PRODAP/ZIL (≠ BOV-XXXX)
+  parityNumber           Int? // Número de partos — atualizado a cada CALVING confirmado
+  lastCalvingDate        DateTime? // Data do último parto confirmado
+  lastVeterinaryReportAt DateTime? // Quando o último relatório veterinário incluiu este animal
+  lastCcsThousand        Float? // CCS mais recente (x 1000) — para alertas rápidos no dashboard
+
+  farm             Farm     @relation(fields: [farmId], references: [id])
+  lot              Lot?     @relation(fields: [lotId], references: [id])
+  mother           Animal?  @relation("Mother", fields: [motherId], references: [id])
+  maternalChildren Animal[] @relation("Mother")
+  father           Animal?  @relation("Father", fields: [fatherId], references: [id])
+  paternalChildren Animal[] @relation("Father")
 
   photos              AnimalPhoto[]
   weightRecords       WeightRecord[]
@@ -184,6 +200,7 @@ model Animal {
   reproductions       Reproduction[]
   alerts              Alert[]
   feedConsumptions    AnimalFeedConsumption[]
+  veterinarySnapshots VeterinaryAnimalSnapshot[]
 
   @@unique([farmId, tag])
   @@index([farmId, status])
@@ -192,18 +209,20 @@ model Animal {
   @@index([farmId, lotId])
   @@index([motherId])
   @@index([fatherId])
+  @@index([farmId, externalCode]) // match rápido na importação veterinária
+  @@index([farmId, lastCalvingDate]) // dashboard reprodutivo — dias pós-parto
   @@map("animals")
 }
 
 model AnimalPhoto {
   id           String   @id @default(cuid())
   animalId     String
-  url          String   // URL da imagem original otimizada
-  thumbnailUrl String?  // URL do thumbnail 300px (gerado automaticamente)
+  url          String // URL da imagem original otimizada
+  thumbnailUrl String? // URL do thumbnail 300px (gerado automaticamente)
   caption      String?
   takenAt      DateTime @default(now())
   isPrimary    Boolean  @default(false)
-  sizeKb       Int      @default(0)  // Tamanho em KB (original + thumb combinados)
+  sizeKb       Int      @default(0) // Tamanho em KB (original + thumb combinados)
 
   animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
 
@@ -254,12 +273,12 @@ model Lot {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  observations String?  @db.Text
+  observations String? @db.Text
 
-  farm    Farm     @relation(fields: [farmId], references: [id])
-  pasture Pasture? @relation(fields: [pastureId], references: [id])
-  animals Animal[]
-  feedSessions FeedSession[]
+  farm               Farm           @relation(fields: [farmId], references: [id])
+  pasture            Pasture?       @relation(fields: [pastureId], references: [id])
+  animals            Animal[]
+  feedSessions       FeedSession[]
   farmSettingsAsMain FarmSettings[] @relation("MainProductionLot")
 
   @@unique([farmId, name])
@@ -308,15 +327,15 @@ model Reproduction {
 // ─── PRODUÇÃO DE LEITE ─────────────────────────────────────
 
 model MilkRecord {
-  id              String     @id @default(cuid())
-  animalId        String
-  farmId          String
-  liters          Float
-  shift           MilkShift
-  recordedAt      DateTime   @default(now())
+  id             String    @id @default(cuid())
+  animalId       String
+  farmId         String
+  liters         Float
+  shift          MilkShift
+  recordedAt     DateTime  @default(now())
   // Para deduplicação de sync offline: o cliente gera UUID; o servidor
   // rejeita duplicatas silenciosamente e retorna o registro existente.
-  idempotencyKey  String?    @unique @map("idempotency_key")
+  idempotencyKey String?   @unique @map("idempotency_key")
 
   animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
 
@@ -353,9 +372,6 @@ model MilkingSession {
 }
 
 // ─── PARTICIPANTES DA ORDENHA ──────────────────────────────
-// Registra quais vacas participaram de cada sessão.
-// liters = null enquanto não há produção individual real.
-// isEstimated = true enquanto o valor é calculado por distribuição.
 
 model MilkingSessionParticipant {
   id             String   @id @default(cuid())
@@ -469,8 +485,8 @@ model AuditLog {
   id        String   @id @default(cuid())
   farmId    String
   userId    String
-  action    String   // 'CREATE' | 'UPDATE' | 'DELETE'
-  entity    String   // 'MilkRecord' | 'HealthEvent' | 'Animal' | etc.
+  action    String // 'CREATE' | 'UPDATE' | 'DELETE'
+  entity    String // 'MilkRecord' | 'HealthEvent' | 'Animal' | etc.
   entityId  String
   before    Json?
   after     Json?
@@ -502,6 +518,139 @@ model Alert {
 
   @@index([farmId, status])
   @@map("alerts")
+}
+
+// ─── ETIQUETAS DE BRINCO ────────────────────────────────────
+
+model EarTagTemplate {
+  id     String @id @default(cuid())
+  farmId String
+  farm   Farm   @relation(fields: [farmId], references: [id], onDelete: Cascade)
+
+  name String
+
+  widthMm   Float @default(50)
+  heightMm  Float @default(25)
+  paddingMm Float @default(3)
+
+  fontSizeMain      Int @default(14)
+  fontSizeSecondary Int @default(9)
+
+  qrSizeMm Float @default(18)
+
+  showAnimalName Boolean @default(false)
+  showAnimalTag  Boolean @default(true)
+  showFarmName   Boolean @default(false)
+  showBorder     Boolean @default(true)
+
+  orientation String @default("landscape")
+  bgColor     String @default("#FFFFFF")
+  textColor   String @default("#000000")
+
+  layoutJson Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([farmId])
+  @@map("ear_tag_templates")
+}
+
+// ─── RELATÓRIO VETERINÁRIO ─────────────────────────────────
+// Cabeçalho de cada importação de relatório veterinário (PRODAP/ZIL).
+// Imutável após status = IMPORTED.
+// importedByUserId sem FK — append-only, como AuditLog, sobrevive a deleções.
+
+model VeterinaryReport {
+  id                String                 @id @default(cuid())
+  farmId            String
+  reportDate        DateTime               @db.Date
+  sourceSystem      VeterinaryReportSource @default(PRODAP)
+  technicianName    String?
+  externalFarmName  String? // Nome da fazenda como consta no relatório
+  externalOwnerName String? // Proprietário como consta no relatório
+  originalFilename  String?
+  originalFileUrl   String? // R2 URL do arquivo original
+  importStatus      VeterinaryReportStatus @default(DRAFT)
+  totalRows         Int                    @default(0)
+  matchedRows       Int                    @default(0)
+  unmatchedRows     Int                    @default(0)
+  importedByUserId  String // sem FK — append-only como AuditLog
+  metadata          Json? // dados extras: avisos, linhas puladas, etc.
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  farm      Farm                       @relation(fields: [farmId], references: [id])
+  snapshots VeterinaryAnimalSnapshot[]
+
+  @@index([farmId, reportDate])
+  @@map("veterinary_reports")
+}
+
+// ─── SNAPSHOT DO ANIMAL NO RELATÓRIO ──────────────────────
+// Foto dos dados de cada animal na data do relatório veterinário.
+// Imutável após importação confirmada.
+// animalId é nullable: null = linha não encontrou match no cadastro.
+// rp e sx são String? — valor bruto do relatório, sem interpretação veterinária.
+
+model VeterinaryAnimalSnapshot {
+  id       String  @id @default(cuid())
+  farmId   String
+  reportId String
+  animalId String? // nullable: null = não encontrado no cadastro
+
+  // Identificação no relatório
+  externalCode String?
+  animalName   String?
+
+  // Grupo operacional
+  reportGroup   VeterinaryReportGroup @default(UNKNOWN)
+  rawGroupLabel String? // label original do relatório
+
+  // Dados reprodutivos do snapshot
+  parityNumber        Int?
+  lastCalvingDate     DateTime?
+  rp                  String? // retenção de placenta — valor bruto (ex: "Sim", "1", "S")
+  sx                  String? // escore de descarga — valor bruto (ex: "1", "2", "3")
+  inseminationDate    DateTime?
+  inseminationNumber  Int? // 1ª, 2ª, 3ª IA
+  reportDays          Int? // campo "Dias" — significado definido por dayMeaning
+  dayMeaning          VeterinaryDayMeaning @default(UNKNOWN)
+  bullName            String?
+  expectedCalvingDate DateTime?
+
+  // Dados produtivos do snapshot
+  milkPeak    Float? // leite pico da secagem
+  milkCurrent Float? // leite produção atual da secagem
+
+  // Cadastro no relatório
+  breed      String?
+  fatherName String? // nome do pai como texto livre (pode não ser animal do sistema)
+
+  // Escores veterinários
+  cScore Float? // condição corporal (C)
+  tScore Float? // escore de tetas/úbere (T)
+
+  // Ocorrências e recomendações
+  occurrence            String?
+  discardRecommendation String? // recomendação de descarte — texto livre do técnico
+  mastitisDays          Int? // dias com mamite nesta secagem
+  ccsThousand           Float? // CCS x 1000
+
+  isCloseUp Boolean  @default(false) // amojada — identificada visualmente no relatório
+  rawRow    Json? // linha original para auditoria e re-parsing
+  createdAt DateTime @default(now())
+
+  farm   Farm             @relation(fields: [farmId], references: [id])
+  report VeterinaryReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  animal Animal?          @relation(fields: [animalId], references: [id])
+
+  @@index([farmId, reportId])
+  @@index([farmId, animalId, createdAt])
+  @@index([farmId, reportGroup])
+  @@index([farmId, expectedCalvingDate])
+  @@index([reportId])
+  @@map("veterinary_animal_snapshots")
 }
 
 // ─── ENUMS ─────────────────────────────────────────────────
@@ -558,11 +707,11 @@ enum LotType {
 }
 
 enum MilkStatus {
-  LACTATING      // vaca em produção ativa
-  DRY            // vaca seca
-  DRY_PREGNANT   // vaca seca e gestante
-  HEIFER         // novilha (ainda não pariu)
-  NA             // não se aplica (machos, bezerros, etc.)
+  LACTATING // vaca em produção ativa
+  DRY // vaca seca
+  DRY_PREGNANT // vaca seca e gestante (milkStatus DRY + PREGNANCY_CHECK CONFIRMED)
+  HEIFER // novilha (ainda não pariu)
+  NA // não se aplica (machos, bezerros, etc.)
 }
 
 enum HealthEventType {
@@ -571,6 +720,7 @@ enum HealthEventType {
   DEWORMING
   EXAM
   MEDICATION
+  MASTITIS // mamite como tipo específico — permite filtros e alertas dedicados
   OTHER
 }
 
@@ -578,6 +728,7 @@ enum ReproductionType {
   INSEMINATION
   NATURAL_MATING
   PREGNANCY_CHECK
+  CALVING // parto confirmado — fonte primária para parityNumber e lastCalvingDate
 }
 
 enum ReproductionStatus {
@@ -598,6 +749,15 @@ enum AlertType {
   CALVING
   VACCINATION
   WEIGHT_CHECK
+  // ── Módulo veterinário ─────────────────────────────────
+  PREGNANCY_CHECK_DUE // diagnóstico de gestação pendente (> 30 dias de IA)
+  DRY_OFF_DUE // animal deve ser seca (≤ 60 dias para parto previsto)
+  CALVING_SOON // parto previsto em ≤ 15 dias
+  CALVING_OVERDUE // parto previsto passou sem registro de CALVING
+  EMPTY_COW_LATE // vaca vazia atrasada (> emptyDaysAlert dias sem IA)
+  HIGH_CCS // CCS acima de ccsAlertThreshold
+  MASTITIS_FOLLOW_UP // acompanhamento de mamite ativa
+  DISCARD_REVIEW // animal recomendada para descarte pelo técnico
 }
 
 enum AlertStatus {
@@ -619,46 +779,40 @@ enum InviteStatus {
   EXPIRED
 }
 
-// ─── ETIQUETAS DE BRINCO ────────────────────────────────────
-// Template configurável para impressão de etiquetas dos animais.
-// layoutJson guarda posições e variantes visuais para extensibilidade futura.
+// ─── ENUMS DO MÓDULO VETERINÁRIO ──────────────────────────
 
-model EarTagTemplate {
-  id     String @id @default(cuid())
-  farmId String
-  farm   Farm   @relation(fields: [farmId], references: [id], onDelete: Cascade)
+enum VeterinaryReportSource {
+  PRODAP
+  ZIL
+  MANUAL
+  CSV
+  OTHER
+}
 
-  name String
+enum VeterinaryReportStatus {
+  DRAFT // arquivo carregado, ainda não confirmado
+  IMPORTED // todos os rows matched e importados
+  PARTIALLY_IMPORTED // alguns rows sem match
+  FAILED // erro de parsing ou validação
+}
 
-  // Dimensões em milímetros
-  widthMm   Float @default(50)
-  heightMm  Float @default(25)
-  paddingMm Float @default(3)
+enum VeterinaryReportGroup {
+  EMPTY_NORMAL_45D // matrizes vazias normais com mais de 45 dias paridas
+  EMPTY_LATE // matrizes vazias atrasadas
+  DRY_EMPTY // matrizes secas vazias
+  INSEMINATED_OVER_30D // matrizes inseminadas há mais de 30 dias
+  TO_DRY // matrizes a secar
+  PREGNANT_HEIFER // novilhas gestantes
+  LACTATING_PREGNANT // matrizes em lactação gestantes
+  DRY_PREGNANT // matrizes secas gestantes
+  CLOSE_UP // matrizes amojadas (pré-parto iminente)
+  UNKNOWN // grupo não identificado
+}
 
-  // Tipografia
-  fontSizeMain      Int   @default(14)
-  fontSizeSecondary Int   @default(9)
-
-  // QR Code
-  qrSizeMm Float @default(18)
-
-  // Campos visíveis
-  showAnimalName Boolean @default(false)
-  showAnimalTag  Boolean @default(true)
-  showFarmName   Boolean @default(false)
-  showBorder     Boolean @default(true)
-
-  // Aparência
-  orientation String @default("landscape") // "portrait" | "landscape"
-  bgColor     String @default("#FFFFFF")
-  textColor   String @default("#000000")
-
-  // Configurações de layout estendidas (posição do QR, variante visual, etc.)
-  layoutJson Json @default("{}")
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([farmId])
-  @@map("ear_tag_templates")
+enum VeterinaryDayMeaning {
+  DAYS_POSTPARTUM // dias pós-parto
+  DAYS_PREGNANT // dias de gestação
+  DAYS_SINCE_INSEMINATION // dias desde a inseminação
+  DAYS_OPEN // dias em anestro / vazia
+  UNKNOWN
 }

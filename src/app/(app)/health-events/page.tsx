@@ -64,6 +64,7 @@ const TYPE_FILTER_OPTIONS: { value: HealthEventType | 'ALL'; label: string }[] =
   { value: 'DEWORMING',   label: 'Vermifugação'},
   { value: 'EXAM',        label: 'Exame'       },
   { value: 'MEDICATION',  label: 'Medicação'   },
+  { value: 'MASTITIS',    label: 'Mamite'      },
   { value: 'OTHER',       label: 'Outro'       },
 ]
 
