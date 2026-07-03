@@ -4,7 +4,10 @@ import Link from 'next/link'
 import { auth } from '@/lib/auth'
 import { getActiveFarm } from '@/lib/active-farm'
 
-import { getAnimalById, getLotsForSelect }         from '@/modules/animals/queries'
+import { getAnimalById, getLotsForSelect }             from '@/modules/animals/queries'
+import { getSnapshotHistoryForAnimalCard }             from '@/modules/veterinary/queries'
+import { VeterinaryGroupBadge }                        from '@/modules/veterinary/components/veterinary-group-badge'
+import { REPORT_SOURCE_LABELS }                        from '@/modules/veterinary/constants'
 import { getAnimalMilkStats }                      from '@/modules/milk/queries'
 import { getHealthEventsByAnimal }                 from '@/modules/health-events/queries'
 import { getAnimalFeedHistory }                    from '@/modules/feed/queries'
@@ -27,7 +30,7 @@ import {
   BIRTH_TYPE_LABELS,
   LOT_TYPE_LABELS,
 } from '@/lib/utils'
-import { Scale, MilkIcon, Heart, Camera, Wheat, ClipboardList, Tag } from 'lucide-react'
+import { Scale, MilkIcon, Heart, Camera, Wheat, ClipboardList, Tag, Stethoscope } from 'lucide-react'
 
 // ─── Metadata dinâmica ─────────────────────────────────────
 
@@ -70,17 +73,20 @@ export default async function AnimalDetailPage({
   const canViewAudit = role !== 'VIEWER'
 
   // Carrega dados em paralelo
-  const [animal, lots, healthEvents, feedHistory, milkStats, auditHistory] = await Promise.all([
-    getAnimalById(id, farmId),
-    getLotsForSelect(farmId),
-    getHealthEventsByAnimal(id, farmId, 10),
-    getAnimalFeedHistory(id, farmId, 5),
-    getAnimalMilkStats(id, farmId),
-    canViewAudit ? getEntityHistory(id, farmId, 20) : Promise.resolve([]),
-  ])
+  const [animal, lots, healthEvents, feedHistory, milkStats, auditHistory, vetHistory] =
+    await Promise.all([
+      getAnimalById(id, farmId),
+      getLotsForSelect(farmId),
+      getHealthEventsByAnimal(id, farmId, 10),
+      getAnimalFeedHistory(id, farmId, 5),
+      getAnimalMilkStats(id, farmId),
+      canViewAudit ? getEntityHistory(id, farmId, 20) : Promise.resolve([]),
+      getSnapshotHistoryForAnimalCard(id, farmId, 5),
+    ])
 
   if (!animal) notFound()
 
+  const vetSnapshot  = vetHistory[0] ?? null
   const primaryPhoto = animal.photos.find((p) => p.isPrimary)
   const lastWeight   = animal.weightRecords[0]
   const isActive     = animal.status === 'ACTIVE'
@@ -307,6 +313,108 @@ export default async function AnimalDetailPage({
               />
             ))}
           </InfoRows>
+        </SectionCard>
+      )}
+
+      {/* Dados Veterinários */}
+      {vetSnapshot && (
+        <SectionCard
+          title="Dados Veterinários"
+          action={
+            <Link href="/veterinary" className="text-xs text-primary hover:underline flex items-center gap-1">
+              <Stethoscope className="size-3" />
+              Dashboard
+            </Link>
+          }
+        >
+          <div className="space-y-3">
+            {/* Grupo + data do relatório */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <VeterinaryGroupBadge group={vetSnapshot.reportGroup} />
+              <span className="text-xs text-muted-foreground">
+                {vetSnapshot.report?.reportDate
+                  ? formatDate(vetSnapshot.report.reportDate)
+                  : formatDate(vetSnapshot.createdAt)}
+              </span>
+              {vetSnapshot.report?.sourceSystem && (
+                <span className="text-xs text-muted-foreground">
+                  · {REPORT_SOURCE_LABELS[vetSnapshot.report.sourceSystem as keyof typeof REPORT_SOURCE_LABELS] ?? vetSnapshot.report.sourceSystem}
+                </span>
+              )}
+            </div>
+
+            {/* Métricas */}
+            <InfoRows>
+              {vetSnapshot.parityNumber != null && (
+                <InfoRow label="Partos (NP)" value={String(vetSnapshot.parityNumber)} />
+              )}
+              {vetSnapshot.lastCalvingDate && (
+                <InfoRow label="Último parto"   value={formatDate(vetSnapshot.lastCalvingDate)} />
+              )}
+              {vetSnapshot.expectedCalvingDate && (
+                <InfoRow label="Parto previsto" value={formatDate(vetSnapshot.expectedCalvingDate)} />
+              )}
+              {vetSnapshot.inseminationDate && (
+                <InfoRow label="Última IA"      value={formatDate(vetSnapshot.inseminationDate)} />
+              )}
+              {vetSnapshot.bullName && (
+                <InfoRow label="Touro"          value={vetSnapshot.bullName} />
+              )}
+              {vetSnapshot.ccsThousand != null && (
+                <InfoRow
+                  label="CCS (×1000)"
+                  value={
+                    <span className={vetSnapshot.ccsThousand >= 400 ? 'text-red-500 font-semibold' : ''}>
+                      {vetSnapshot.ccsThousand.toLocaleString('pt-BR')}
+                    </span>
+                  }
+                />
+              )}
+              {vetSnapshot.mastitisDays != null && vetSnapshot.mastitisDays > 0 && (
+                <InfoRow
+                  label="Mamite"
+                  value={
+                    <span className="text-red-500 font-semibold">
+                      {vetSnapshot.mastitisDays} dia{vetSnapshot.mastitisDays !== 1 ? 's' : ''}
+                    </span>
+                  }
+                />
+              )}
+              {vetSnapshot.discardRecommendation && (
+                <InfoRow
+                  label="Descarte"
+                  value={<span className="text-destructive font-semibold">Recomendado</span>}
+                />
+              )}
+              {vetSnapshot.occurrence && (
+                <InfoRow label="Ocorrência" value={vetSnapshot.occurrence} />
+              )}
+            </InfoRows>
+
+            {/* Histórico resumido */}
+            {vetHistory.length > 1 && (
+              <div className="pt-2 border-t border-border">
+                <p className="text-[11px] text-muted-foreground mb-1.5">Histórico veterinário</p>
+                <div className="space-y-1.5">
+                  {vetHistory.map((h, i) => (
+                    <div key={h.id} className="flex items-center gap-2 text-xs">
+                      <span className="text-muted-foreground whitespace-nowrap w-20 shrink-0">
+                        {h.report?.reportDate
+                          ? formatDate(h.report.reportDate)
+                          : formatDate(h.createdAt)}
+                      </span>
+                      <VeterinaryGroupBadge group={h.reportGroup} size="sm" />
+                      {i === 0 && (
+                        <span className="text-[10px] bg-primary/10 text-primary rounded-full px-1.5 py-0.5 shrink-0">
+                          Atual
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </SectionCard>
       )}
 

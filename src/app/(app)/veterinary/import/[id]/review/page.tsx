@@ -5,6 +5,7 @@ import { canAccess }                   from '@/lib/permissions'
 import {
   getVeterinaryImportReview,
   buildVeterinaryImportPreview,
+  buildCreateAnimalsFromVeterinarySnapshotsPreview,
 } from '@/modules/veterinary/queries'
 import { PageHeader }                  from '@/components/shared/page-header'
 import {
@@ -20,12 +21,14 @@ import {
 } from 'lucide-react'
 import { SnapshotLinkEditor }          from '@/modules/veterinary/components/snapshot-link-editor'
 import { ConfirmImportButton }         from '@/modules/veterinary/components/confirm-import-button'
+import { CreateAnimalsButton }         from '@/modules/veterinary/components/create-animals-button'
 import type { VeterinaryAnimalSnapshot } from '@prisma/client'
 import type {
   VeterinarySnapshotWithAnimal,
   VeterinarySnapshotRaw,
   VeterinaryMatchCandidate,
   VeterinaryImportPreview,
+  CreateAnimalsFromSnapshotsPreview,
 } from '@/modules/veterinary/types'
 
 export const metadata = { title: 'Revisão da Importação | BovControl' }
@@ -247,13 +250,14 @@ export default async function VeterinaryImportReviewPage({ params }: Props) {
   const allowed = await canAccess(session.user.id, activeFarm.farmId, 'MANAGER')
   if (!allowed) redirect('/')
 
-  // Carregar revisão + preview em paralelo
-  const [review, preview] = await Promise.all([
+  // Carregar revisão + previews em paralelo
+  const [review, importPreview, createPreview] = await Promise.all([
     getVeterinaryImportReview(id, activeFarm.farmId),
     buildVeterinaryImportPreview(id, activeFarm.farmId),
+    buildCreateAnimalsFromVeterinarySnapshotsPreview(id, activeFarm.farmId),
   ])
 
-  if (!review || !preview) redirect('/veterinary/import')
+  if (!review || !importPreview) redirect('/veterinary/import')
 
   const { report, autoMatched, pendingReview, unmatched, parseErrors } = review
   const linkedCount    = autoMatched.length
@@ -305,6 +309,27 @@ export default async function VeterinaryImportReviewPage({ params }: Props) {
         <StatCard label="Sem vínculo"                  value={report.unmatchedRows} color={report.unmatchedRows > 0 ? 'amber' : 'default'} />
         <StatCard label="Erros de leitura"             value={parseErrors.length}   color={parseErrors.length > 0 ? 'red' : 'default'} />
       </div>
+
+      {/* ── Criar animais a partir de snapshots não vinculados ── */}
+      {!isImported && createPreview && createPreview.createCount > 0 && (
+        <section className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-4 space-y-3">
+          <div className="space-y-1">
+            <h2 className="text-sm font-semibold text-blue-700 dark:text-blue-400">
+              Criar animais no BovControl
+            </h2>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {createPreview.createCount} animal{createPreview.createCount !== 1 ? 'is' : ''} não vinculado{createPreview.createCount !== 1 ? 's' : ''} pode{createPreview.createCount !== 1 ? 'm' : ''} ser cadastrado{createPreview.createCount !== 1 ? 's' : ''} diretamente a partir deste relatório.
+              Os animais serão cadastrados com ID e tag gerados pelo BovControl (formato BOV-XXXX).
+              O código do veterinário será salvo apenas como código externo e não vira brinco principal.
+            </p>
+          </div>
+          <CreateAnimalsButton
+            reportId={report.id}
+            unmatchedCount={createPreview.createCount}
+            preview={createPreview as CreateAnimalsFromSnapshotsPreview}
+          />
+        </section>
+      )}
 
       {/* ── Seção 1: Vinculados automaticamente ──────────── */}
       {autoMatched.length > 0 && (
@@ -399,7 +424,7 @@ export default async function VeterinaryImportReviewPage({ params }: Props) {
           reportId={report.id}
           linkedCount={linkedCount}
           isAlreadyImported={isImported}
-          preview={preview as VeterinaryImportPreview}
+          preview={importPreview as VeterinaryImportPreview}
         />
         {!isImported && (
           <p className="text-xs text-muted-foreground">

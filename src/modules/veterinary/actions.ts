@@ -12,6 +12,7 @@ import { createVeterinaryReportDraftSchema } from './schemas'
 import { computeVeterinaryImportPlan } from './import-engine'
 import type { ActionResult, VeterinaryImportConfirmResult } from './types'
 import type { Prisma }         from '@prisma/client'
+import { buildCreateAnimalsFromVeterinarySnapshotsPreview } from './queries'
 
 // ─── Sprint 9.1B — Criar draft de relatório via CSV ───────
 
@@ -443,6 +444,188 @@ export async function confirmVeterinaryImport(
     }
     console.error('[veterinary] confirmVeterinaryImport error:', e)
     return { success: false, error: 'Erro interno ao confirmar importação' }
+  }
+}
+
+// ─── Sprint 9.1E.1 — Criar animais de snapshots não vinculados ─
+
+export async function createAnimalsFromUnmatchedVeterinarySnapshots(
+  reportId: string,
+): Promise<ActionResult<{ created: number; linked: number; conflicts: number; warnings: string[] }>> {
+  try {
+    // ── Auth ────────────────────────────────────────────────
+    const session = await auth()
+    if (!session?.user?.id) return { success: false, error: 'Não autenticado' }
+    const userId = session.user.id
+
+    const activeFarm = await getActiveFarm(userId)
+    if (!activeFarm) return { success: false, error: 'Nenhuma fazenda ativa' }
+    const { farmId } = activeFarm
+
+    await requireFarmAccess(userId, farmId, 'MANAGER')
+
+    // ── Validar relatório ──────────────────────────────────
+    const report = await prisma.veterinaryReport.findFirst({
+      where:  { id: reportId, farmId },
+      select: { id: true, importStatus: true, reportDate: true, matchedRows: true, unmatchedRows: true },
+    })
+    if (!report) return { success: false, error: 'Relatório não encontrado' }
+    if (!['DRAFT', 'PARTIALLY_IMPORTED'].includes(report.importStatus)) {
+      return { success: false, error: 'Relatório não pode mais ser alterado' }
+    }
+
+    // ── Preview (grouping + conflict detection) ────────────
+    const preview = await buildCreateAnimalsFromVeterinarySnapshotsPreview(reportId, farmId)
+    if (!preview) return { success: false, error: 'Erro ao calcular preview' }
+
+    const toCreate = preview.animalsToCreate.filter((a) => !a.hasConflict)
+
+    if (toCreate.length === 0) {
+      return {
+        success: true,
+        data: { created: 0, linked: 0, conflicts: preview.conflictCount, warnings: preview.warnings },
+      }
+    }
+
+    // ── Pré-gerar tags sequenciais ────────────────────────
+    // Busca o número mais alto já existente para evitar colisão.
+    const latestAnimal = await prisma.animal.findFirst({
+      where:   { farmId },
+      select:  { tag: true },
+      orderBy: { tag: 'desc' },
+    })
+    const maxTagNum = latestAnimal
+      ? (parseInt(latestAnimal.tag.match(/(\d+)$/)?.[1] ?? '0', 10) || 0)
+      : 0
+
+    // Mapa key → tag (gerada antes da transaction para evitar async aninhado)
+    const tagMap = new Map<string, string>()
+    toCreate.forEach((a, i) => {
+      tagMap.set(a.key, `BOV-${String(maxTagNum + i + 1).padStart(4, '0')}`)
+    })
+
+    // ── Transação atômica ─────────────────────────────────
+    type CreatedAnimalInfo = {
+      id:          string
+      tag:         string
+      externalCode: string | null
+      snapshotIds: string[]
+      groups:      string[]
+    }
+
+    const reportDate = new Date(report.reportDate)
+
+    const createdAnimals = await prisma.$transaction(async (tx) => {
+      const results: CreatedAnimalInfo[] = []
+
+      for (const ap of toCreate) {
+        const tag = tagMap.get(ap.key)
+        if (!tag) continue
+
+        const animal = await tx.animal.create({
+          data: {
+            farmId,
+            tag,
+            name:                   ap.animalName   ?? undefined,
+            externalCode:           ap.externalCode ?? undefined,
+            sex:                    'FEMALE',
+            category:               ap.category,
+            breed:                  ap.breed ?? 'Mestiço',
+            status:                 'ACTIVE',
+            parityNumber:           ap.parityNumber    ?? undefined,
+            lastCalvingDate:        ap.lastCalvingDate ?? undefined,
+            lastVeterinaryReportAt: reportDate,
+            lastCcsThousand:        ap.ccsThousand     ?? undefined,
+          },
+          select: { id: true, tag: true, externalCode: true },
+        })
+
+        // Vincular snapshots (apenas os que ainda estão sem vínculo)
+        await tx.veterinaryAnimalSnapshot.updateMany({
+          where: { id: { in: ap.snapshotIds }, farmId, reportId, animalId: null },
+          data:  { animalId: animal.id },
+        })
+
+        results.push({
+          id:           animal.id,
+          tag:          animal.tag,
+          externalCode: animal.externalCode ?? null,
+          snapshotIds:  ap.snapshotIds,
+          groups:       ap.groups,
+        })
+      }
+
+      // Atualizar contadores do relatório
+      const linkedNow   = results.reduce((s, a) => s + a.snapshotIds.length, 0)
+      const newMatched  = (report.matchedRows   ?? 0) + linkedNow
+      const newUnmatched = Math.max(0, (report.unmatchedRows ?? 0) - linkedNow)
+
+      await tx.veterinaryReport.update({
+        where: { id: reportId },
+        data:  { matchedRows: newMatched, unmatchedRows: newUnmatched },
+      })
+
+      return results
+    })
+
+    // ── AuditLogs (fire-and-forget) ───────────────────────
+    for (const ca of createdAnimals) {
+      auditCreate({
+        farmId,
+        userId,
+        entity:   'Animal',
+        entityId: ca.id,
+        metadata: ({
+          event:         'VETERINARY_IMPORT_ANIMAL_CREATED',
+          source:        'veterinary_import',
+          reportId,
+          generatedTag:  ca.tag,
+          externalCode:  ca.externalCode,
+          snapshotCount: ca.snapshotIds.length,
+          groups:        ca.groups,
+        }) as unknown as Prisma.InputJsonValue,
+      })
+
+      for (const snapId of ca.snapshotIds) {
+        auditUpdate({
+          farmId,
+          userId,
+          entity:   'VeterinaryAnimalSnapshot',
+          entityId: snapId,
+          metadata: ({
+            event:        'VETERINARY_SNAPSHOT_AUTO_LINKED_AFTER_ANIMAL_CREATION',
+            source:       'veterinary_import',
+            reportId,
+            animalId:     ca.id,
+            generatedTag: ca.tag,
+            externalCode: ca.externalCode,
+          }) as unknown as Prisma.InputJsonValue,
+        })
+      }
+    }
+
+    revalidatePath(`/veterinary/import/${reportId}/review`)
+
+    return {
+      success: true,
+      data: {
+        created:   createdAnimals.length,
+        linked:    createdAnimals.reduce((s, a) => s + a.snapshotIds.length, 0),
+        conflicts: preview.conflictCount,
+        warnings:  preview.warnings,
+      },
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message === 'Acesso negado') {
+      return { success: false, error: 'Apenas gerentes e proprietários podem criar animais' }
+    }
+    // P2002 = unique constraint — race condition na geração de tag
+    const prismaErr = e as { code?: string }
+    if (prismaErr.code === 'P2002') {
+      return { success: false, error: 'Conflito de brinco detectado. Tente novamente.' }
+    }
+    console.error('[veterinary] createAnimalsFromUnmatchedVeterinarySnapshots error:', e)
+    return { success: false, error: 'Erro interno ao criar animais' }
   }
 }
 

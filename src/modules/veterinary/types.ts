@@ -141,3 +141,29 @@ export type VeterinaryImportConfirmResult = {
   skippedSnapshots:     number
   warnings:             string[]
 }
+
+// ─── Sprint 9.1E.1 — Criar animais a partir de snapshots ──
+
+export type AnimalFromSnapshotPreview = {
+  key:             string
+  externalCode:    string | null
+  animalName:      string | null
+  category:        'COW' | 'HEIFER'
+  breed:           string | null
+  parityNumber:    number | null
+  lastCalvingDate: Date | null
+  ccsThousand:     number | null
+  snapshotCount:   number
+  snapshotIds:     string[]
+  groups:          string[]
+  hasConflict:     boolean
+  conflictReason?: string
+}
+
+export type CreateAnimalsFromSnapshotsPreview = {
+  animalsToCreate: AnimalFromSnapshotPreview[]
+  conflictCount:   number
+  createCount:     number
+  snapshotsToLink: number
+  warnings:        string[]
+}

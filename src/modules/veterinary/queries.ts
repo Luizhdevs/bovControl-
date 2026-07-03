@@ -8,6 +8,8 @@ import type {
   VeterinaryReportSummary,
   VeterinaryGroupSummary,
   VeterinaryImportPreview,
+  AnimalFromSnapshotPreview,
+  CreateAnimalsFromSnapshotsPreview,
 } from './types'
 import type { VeterinaryReportFiltersInput } from './schemas'
 import type { VeterinaryReportGroup } from '@prisma/client'
@@ -335,6 +337,228 @@ export async function getVeterinaryImportReview(
   }
 
   return { report, autoMatched, pendingReview, unmatched, parseErrors }
+}
+
+// ─── Relatório pendente (DRAFT / PARTIALLY_IMPORTED) ─────
+
+export async function getPendingVeterinaryReport(farmId: string) {
+  return prisma.veterinaryReport.findFirst({
+    where:   { farmId, importStatus: { in: ['DRAFT', 'PARTIALLY_IMPORTED'] } },
+    orderBy: { updatedAt: 'desc' },
+    select:  { id: true, importStatus: true, reportDate: true, sourceSystem: true },
+  })
+}
+
+// ─── Lista de atenção (CLOSE_UP, TO_DRY, EMPTY_LATE …) ──
+
+const ATTENTION_GROUPS: VeterinaryReportGroup[] = [
+  'CLOSE_UP', 'TO_DRY', 'EMPTY_LATE', 'INSEMINATED_OVER_30D', 'DRY_EMPTY',
+]
+
+const ATTENTION_GROUP_PRIORITY: Record<string, number> = {
+  CLOSE_UP: 0, TO_DRY: 1, EMPTY_LATE: 2, INSEMINATED_OVER_30D: 3, DRY_EMPTY: 4,
+}
+
+export async function getVeterinaryAttentionList(farmId: string, limit = 15) {
+  const latestReport = await prisma.veterinaryReport.findFirst({
+    where:   { farmId, importStatus: { in: ['IMPORTED', 'PARTIALLY_IMPORTED'] } },
+    orderBy: { reportDate: 'desc' },
+    select:  { id: true },
+  })
+  if (!latestReport) return []
+
+  const rows = await prisma.veterinaryAnimalSnapshot.findMany({
+    where: {
+      reportId:    latestReport.id,
+      farmId,
+      reportGroup: { in: ATTENTION_GROUPS },
+      animalId:    { not: null },
+    },
+    include: {
+      animal: { select: { id: true, tag: true, name: true } },
+    },
+    take: limit * 2,
+  })
+
+  const sorted = [...rows].sort((a, b) => {
+    const pa = ATTENTION_GROUP_PRIORITY[a.reportGroup] ?? 99
+    const pb = ATTENTION_GROUP_PRIORITY[b.reportGroup] ?? 99
+    if (pa !== pb) return pa - pb
+    return (a.animalName ?? '').localeCompare(b.animalName ?? '', 'pt-BR')
+  })
+
+  return sorted.slice(0, limit)
+}
+
+// ─── Histórico de snapshots para o card do animal ─────────
+
+export async function getSnapshotHistoryForAnimalCard(
+  animalId: string,
+  farmId:   string,
+  limit     = 5,
+) {
+  return prisma.veterinaryAnimalSnapshot.findMany({
+    where:   { animalId, farmId },
+    orderBy: { createdAt: 'desc' },
+    take:    limit,
+    include: {
+      report: { select: { id: true, reportDate: true, sourceSystem: true } },
+    },
+  })
+}
+
+// ─── Sprint 9.1E.1 — Preview: criar animais de snapshots ──
+
+function stripAccentsVet(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+}
+
+function normalizeVetAnimalName(name: string | null | undefined): string {
+  if (!name) return ''
+  return stripAccentsVet(name).toLowerCase().trim().replace(/\s+/g, ' ')
+}
+
+export async function buildCreateAnimalsFromVeterinarySnapshotsPreview(
+  reportId: string,
+  farmId:   string,
+): Promise<CreateAnimalsFromSnapshotsPreview | null> {
+  const report = await prisma.veterinaryReport.findFirst({
+    where:  { id: reportId, farmId },
+    select: { id: true, importStatus: true },
+  })
+  if (!report) return null
+  if (!['DRAFT', 'PARTIALLY_IMPORTED'].includes(report.importStatus)) return null
+
+  const snapshots = await prisma.veterinaryAnimalSnapshot.findMany({
+    where: { reportId, farmId, animalId: null, reportGroup: { not: 'UNKNOWN' } },
+    select: {
+      id:              true,
+      externalCode:    true,
+      animalName:      true,
+      reportGroup:     true,
+      parityNumber:    true,
+      lastCalvingDate: true,
+      ccsThousand:     true,
+      breed:           true,
+    },
+  })
+
+  // Group by externalCode (primary) or normalizedName (fallback)
+  const groupMap = new Map<string, typeof snapshots>()
+  for (const snap of snapshots) {
+    let key: string | null = null
+    if (snap.externalCode) {
+      key = `ext:${snap.externalCode.trim().toUpperCase()}`
+    } else if (snap.animalName) {
+      key = `name:${normalizeVetAnimalName(snap.animalName)}`
+    }
+    if (!key) continue
+    const existing = groupMap.get(key)
+    if (existing) existing.push(snap)
+    else groupMap.set(key, [snap])
+  }
+
+  // Conflict detection — load existing animals
+  const extCodes = [...groupMap.keys()]
+    .filter((k) => k.startsWith('ext:'))
+    .map((k) => k.slice(4))
+
+  const [existingByCode, existingWithName] = await Promise.all([
+    extCodes.length > 0
+      ? prisma.animal.findMany({
+          where:  { farmId, externalCode: { in: extCodes } },
+          select: { externalCode: true, tag: true },
+        })
+      : Promise.resolve([]),
+    prisma.animal.findMany({
+      where:  { farmId, name: { not: null } },
+      select: { name: true, tag: true },
+    }),
+  ])
+
+  const existingCodeSet = new Set(
+    existingByCode
+      .filter((a) => a.externalCode !== null)
+      .map((a) => (a.externalCode as string).trim().toUpperCase()),
+  )
+
+  const existingNameMap = new Map<string, string>(
+    existingWithName
+      .filter((a): a is typeof a & { name: string } => a.name !== null)
+      .map((a) => [normalizeVetAnimalName(a.name), a.tag]),
+  )
+
+  // Build preview items
+  const animalsToCreate: AnimalFromSnapshotPreview[] = []
+  const warnings: string[] = []
+
+  for (const [key, snaps] of groupMap) {
+    const firstSnap = snaps[0]
+    if (!firstSnap) continue
+
+    const externalCode   = firstSnap.externalCode ?? null
+    const animalName     = firstSnap.animalName   ?? null
+    const normName       = normalizeVetAnimalName(animalName)
+
+    const hasHeiferGroup = snaps.some((s) => s.reportGroup === 'PREGNANT_HEIFER')
+    const category: 'COW' | 'HEIFER' = hasHeiferGroup ? 'HEIFER' : 'COW'
+
+    let parityNumber: number | null = null
+    let lastCalvingDate: Date | null = null
+    let ccsThousand: number | null   = null
+    const breed = snaps.find((s) => s.breed)?.breed ?? null
+
+    for (const s of snaps) {
+      if (s.parityNumber !== null) {
+        parityNumber = parityNumber === null ? s.parityNumber : Math.max(parityNumber, s.parityNumber)
+      }
+      if (s.lastCalvingDate) {
+        const d = new Date(s.lastCalvingDate)
+        if (!lastCalvingDate || d > lastCalvingDate) lastCalvingDate = d
+      }
+      if (s.ccsThousand !== null) {
+        ccsThousand = ccsThousand === null ? s.ccsThousand : Math.max(ccsThousand, s.ccsThousand)
+      }
+    }
+
+    const groups = [...new Set(snaps.map((s) => s.reportGroup))]
+
+    let hasConflict    = false
+    let conflictReason: string | undefined
+
+    if (externalCode && existingCodeSet.has(externalCode.trim().toUpperCase())) {
+      hasConflict    = true
+      conflictReason = `externalCode "${externalCode}" já existe na fazenda`
+    } else if (!externalCode && normName && existingNameMap.has(normName)) {
+      hasConflict    = true
+      const t        = existingNameMap.get(normName)
+      conflictReason = `Nome similar ao animal ${t}`
+    }
+
+    animalsToCreate.push({
+      key,
+      externalCode,
+      animalName,
+      category,
+      breed,
+      parityNumber,
+      lastCalvingDate,
+      ccsThousand,
+      snapshotCount: snaps.length,
+      snapshotIds:   snaps.map((s) => s.id),
+      groups,
+      hasConflict,
+      conflictReason,
+    })
+  }
+
+  const conflictCount   = animalsToCreate.filter((a) => a.hasConflict).length
+  const createCount     = animalsToCreate.length - conflictCount
+  const snapshotsToLink = animalsToCreate
+    .filter((a) => !a.hasConflict)
+    .reduce((sum, a) => sum + a.snapshotCount, 0)
+
+  return { animalsToCreate, conflictCount, createCount, snapshotsToLink, warnings }
 }
 
 // Importa o tipo diretamente do Prisma para uso no retorno da última função

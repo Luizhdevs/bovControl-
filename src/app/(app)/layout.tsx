@@ -40,7 +40,7 @@ const NAV_ITEMS = [
   { href: '/pastures',       icon: MapPin,          label: 'Pastos'     },
   { href: '/feed-types',     icon: Wheat,           label: 'Rações'     },
   { href: '/ear-tags',       icon: Tag,             label: 'Etiquetas'  },
-  { href: '/veterinary/import', icon: Stethoscope, label: 'Veterinário' },
+  { href: '/veterinary', icon: Stethoscope, label: 'Veterinário' },
   { href: '/alerts',         icon: Bell,            label: 'Alertas', hasBadge: true },
   { href: '/settings',       icon: Settings,        label: 'Config.'    },
 ] as const
