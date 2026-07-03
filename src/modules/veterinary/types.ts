@@ -93,6 +93,8 @@ export type VeterinaryMatchStatus =
   | 'DUPLICATE_CANDIDATES'
   | 'UNMATCHED'
   | 'ERROR'
+  | 'MANUAL_MATCH'
+  | 'LINK_REMOVED'
 
 export interface VeterinaryMatchCandidate {
   animalId: string
@@ -116,4 +118,26 @@ export type VeterinaryImportReview = {
   pendingReview:       VeterinarySnapshotWithAnimal[]
   unmatched:           VeterinaryAnimalSnapshot[]
   parseErrors:         VeterinaryAnimalSnapshot[]
+}
+
+// ─── Import preview (Sprint 9.1C) ─────────────────────────
+
+export type VeterinaryImportPreview = {
+  linkedCount:           number
+  unmatchedCount:        number
+  animalsToUpdate:       number
+  reproductionsToCreate: number
+  healthEventsToCreate:  number
+  alertsToCreate:        number
+  skippedSnapshots:      number
+  warnings:              string[]
+}
+
+export type VeterinaryImportConfirmResult = {
+  animalsUpdated:       number
+  reproductionsCreated: number
+  healthEventsCreated:  number
+  alertsCreated:        number
+  skippedSnapshots:     number
+  warnings:             string[]
 }

@@ -2,21 +2,30 @@ import { auth }                        from '@/lib/auth'
 import { redirect }                    from 'next/navigation'
 import { getActiveFarm }               from '@/lib/active-farm'
 import { canAccess }                   from '@/lib/permissions'
-import { getVeterinaryImportReview }   from '@/modules/veterinary/queries'
+import {
+  getVeterinaryImportReview,
+  buildVeterinaryImportPreview,
+} from '@/modules/veterinary/queries'
 import { PageHeader }                  from '@/components/shared/page-header'
-import { VETERINARY_GROUP_LABELS, REPORT_SOURCE_LABELS, REPORT_STATUS_LABELS } from '@/modules/veterinary/constants'
-import { DAY_MEANING_LABELS }          from '@/modules/veterinary/constants'
+import {
+  VETERINARY_GROUP_LABELS,
+  REPORT_SOURCE_LABELS,
+  REPORT_STATUS_LABELS,
+  DAY_MEANING_LABELS,
+} from '@/modules/veterinary/constants'
 import { format }                      from 'date-fns'
 import { ptBR }                        from 'date-fns/locale'
 import {
-  CheckCircle2, AlertCircle, HelpCircle, XCircle,
-  Lock, User,
+  CheckCircle2, AlertCircle, HelpCircle, XCircle, User,
 } from 'lucide-react'
+import { SnapshotLinkEditor }          from '@/modules/veterinary/components/snapshot-link-editor'
+import { ConfirmImportButton }         from '@/modules/veterinary/components/confirm-import-button'
 import type { VeterinaryAnimalSnapshot } from '@prisma/client'
 import type {
   VeterinarySnapshotWithAnimal,
   VeterinarySnapshotRaw,
   VeterinaryMatchCandidate,
+  VeterinaryImportPreview,
 } from '@/modules/veterinary/types'
 
 export const metadata = { title: 'Revisão da Importação | BovControl' }
@@ -41,6 +50,8 @@ function getMatchStatusLabel(status: string | undefined): string {
     case 'DUPLICATE_CANDIDATES':return 'Duplicados'
     case 'UNMATCHED':           return 'Não encontrado'
     case 'ERROR':               return 'Erro de leitura'
+    case 'MANUAL_MATCH':        return 'Vínculo manual'
+    case 'LINK_REMOVED':        return 'Vínculo removido'
     default:                    return 'Desconhecido'
   }
 }
@@ -80,6 +91,39 @@ function SectionHeader({ title, count, icon: Icon, color }: {
   )
 }
 
+// ─── Table wrapper ────────────────────────────────────────
+
+function SnapshotTable({ children, minimal }: { children: React.ReactNode; minimal?: boolean }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border">
+      <table className="w-full text-left">
+        <thead className="bg-muted/50">
+          <tr>
+            {minimal ? (
+              <>
+                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Linha</th>
+                <th className="py-2 px-3 text-xs font-medium text-muted-foreground" colSpan={7}>Motivo do erro</th>
+              </>
+            ) : (
+              <>
+                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Código</th>
+                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Nome</th>
+                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Grupo</th>
+                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Último parto</th>
+                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Brinco</th>
+                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Animal</th>
+                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Status</th>
+                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Ações</th>
+              </>
+            )}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  )
+}
+
 // ─── Row: auto-matched ────────────────────────────────────
 
 function AutoMatchedRow({ snap }: { snap: VeterinarySnapshotWithAnimal }) {
@@ -102,6 +146,9 @@ function AutoMatchedRow({ snap }: { snap: VeterinarySnapshotWithAnimal }) {
           <CheckCircle2 className="size-3" />
           {getMatchStatusLabel(status)}
         </span>
+      </td>
+      <td className="py-2 px-3">
+        <SnapshotLinkEditor snapshotId={snap.id} hasLink={true} />
       </td>
     </tr>
   )
@@ -141,6 +188,9 @@ function PendingReviewRow({ snap }: { snap: VeterinarySnapshotWithAnimal }) {
           {getMatchStatusLabel(status)}
         </span>
       </td>
+      <td className="py-2 px-3">
+        <SnapshotLinkEditor snapshotId={snap.id} hasLink={false} candidates={candidates} />
+      </td>
     </tr>
   )
 }
@@ -154,8 +204,12 @@ function UnmatchedRow({ snap }: { snap: VeterinaryAnimalSnapshot }) {
       <td className="py-2 px-3 text-sm font-medium">{snap.animalName ?? '—'}</td>
       <td className="py-2 px-3 text-xs">{VETERINARY_GROUP_LABELS[snap.reportGroup]}</td>
       <td className="py-2 px-3 text-xs text-muted-foreground">{fmtDate(snap.lastCalvingDate)}</td>
-      <td className="py-2 px-3 text-xs text-muted-foreground" colSpan={3}>
+      <td className="py-2 px-3 text-xs text-muted-foreground" colSpan={2}>
         Nenhum animal encontrado com este código/nome
+      </td>
+      <td className="py-2 px-3 text-xs text-muted-foreground">—</td>
+      <td className="py-2 px-3">
+        <SnapshotLinkEditor snapshotId={snap.id} hasLink={false} />
       </td>
     </tr>
   )
@@ -168,42 +222,10 @@ function ErrorRow({ snap, index }: { snap: VeterinaryAnimalSnapshot; index: numb
   return (
     <tr className="border-b border-border hover:bg-muted/30 transition-colors">
       <td className="py-2 px-3 text-xs text-muted-foreground">Linha {index + 2}</td>
-      <td className="py-2 px-3 text-xs text-red-600 dark:text-red-400" colSpan={6}>
+      <td className="py-2 px-3 text-xs text-red-600 dark:text-red-400" colSpan={7}>
         {raw?.parseError ?? 'Erro ao processar linha'}
       </td>
     </tr>
-  )
-}
-
-// ─── Table wrapper ────────────────────────────────────────
-
-function SnapshotTable({ children, minimal }: { children: React.ReactNode; minimal?: boolean }) {
-  return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full text-left">
-        <thead className="bg-muted/50">
-          <tr>
-            {minimal ? (
-              <>
-                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Linha</th>
-                <th className="py-2 px-3 text-xs font-medium text-muted-foreground" colSpan={6}>Motivo do erro</th>
-              </>
-            ) : (
-              <>
-                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Código</th>
-                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Nome</th>
-                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Grupo</th>
-                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Último parto</th>
-                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Brinco</th>
-                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Animal</th>
-                <th className="py-2 px-3 text-xs font-medium text-muted-foreground">Status</th>
-              </>
-            )}
-          </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
-    </div>
   )
 }
 
@@ -225,10 +247,17 @@ export default async function VeterinaryImportReviewPage({ params }: Props) {
   const allowed = await canAccess(session.user.id, activeFarm.farmId, 'MANAGER')
   if (!allowed) redirect('/')
 
-  const review = await getVeterinaryImportReview(id, activeFarm.farmId)
-  if (!review) redirect('/veterinary/import')
+  // Carregar revisão + preview em paralelo
+  const [review, preview] = await Promise.all([
+    getVeterinaryImportReview(id, activeFarm.farmId),
+    buildVeterinaryImportPreview(id, activeFarm.farmId),
+  ])
+
+  if (!review || !preview) redirect('/veterinary/import')
 
   const { report, autoMatched, pendingReview, unmatched, parseErrors } = review
+  const linkedCount    = autoMatched.length
+  const isImported     = report.importStatus === 'IMPORTED'
 
   return (
     <div className="space-y-6 pb-10">
@@ -238,16 +267,26 @@ export default async function VeterinaryImportReviewPage({ params }: Props) {
         backHref="/veterinary/import"
       />
 
-      {/* Aviso informativo */}
-      <div className="flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
-        <AlertCircle className="size-4 shrink-0 mt-0.5" />
-        <p>
-          Esta etapa <strong>não alterou os animais</strong>. O relatório está como rascunho.
-          Revise os vínculos abaixo antes de confirmar a importação.
-        </p>
-      </div>
+      {/* Aviso de status */}
+      {isImported ? (
+        <div className="flex gap-3 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-700 dark:text-green-400">
+          <CheckCircle2 className="size-4 shrink-0 mt-0.5" />
+          <p>
+            Esta importação foi <strong>confirmada</strong>. Os dados dos animais vinculados
+            foram atualizados, reproduções, eventos de saúde e alertas foram criados.
+          </p>
+        </div>
+      ) : (
+        <div className="flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+          <AlertCircle className="size-4 shrink-0 mt-0.5" />
+          <p>
+            O relatório está como <strong>rascunho</strong>. Revise os vínculos abaixo e
+            confirme a importação para aplicar os dados nos animais.
+          </p>
+        </div>
+      )}
 
-      {/* Metadados do relatório */}
+      {/* Metadados */}
       <div className="rounded-lg border border-border bg-card p-4 space-y-2 text-sm">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground">
           <div><span className="font-medium text-foreground">Técnico:</span> {report.technicianName ?? '—'}</div>
@@ -261,10 +300,10 @@ export default async function VeterinaryImportReviewPage({ params }: Props) {
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard label="Total de linhas"          value={report.totalRows}     />
-        <StatCard label="Vinculados automaticamente" value={report.matchedRows}   color="green" />
-        <StatCard label="Sem vínculo"              value={report.unmatchedRows}  color={report.unmatchedRows > 0 ? 'amber' : 'default'} />
-        <StatCard label="Erros de leitura"         value={parseErrors.length}    color={parseErrors.length > 0 ? 'red' : 'default'} />
+        <StatCard label="Total de linhas"              value={report.totalRows}     />
+        <StatCard label="Vinculados"                   value={linkedCount}          color="green" />
+        <StatCard label="Sem vínculo"                  value={report.unmatchedRows} color={report.unmatchedRows > 0 ? 'amber' : 'default'} />
+        <StatCard label="Erros de leitura"             value={parseErrors.length}   color={parseErrors.length > 0 ? 'red' : 'default'} />
       </div>
 
       {/* ── Seção 1: Vinculados automaticamente ──────────── */}
@@ -295,7 +334,7 @@ export default async function VeterinaryImportReviewPage({ params }: Props) {
           />
           <p className="text-xs text-muted-foreground">
             Estes animais foram encontrados por correspondência de nome (match fraco).
-            Confirme manualmente na Sprint 9.1E.
+            Confirme o vínculo correto ou vincule manualmente antes de confirmar a importação.
           </p>
           <SnapshotTable>
             {pendingReview.map((snap) => (
@@ -316,7 +355,7 @@ export default async function VeterinaryImportReviewPage({ params }: Props) {
           />
           <p className="text-xs text-muted-foreground">
             Nenhum animal com este código ou nome foi encontrado na fazenda.
-            Vincule manualmente ou verifique o cadastro.
+            Vincule manualmente ou verifique o cadastro de animais.
           </p>
           <SnapshotTable>
             {unmatched.map((snap) => (
@@ -346,7 +385,7 @@ export default async function VeterinaryImportReviewPage({ params }: Props) {
         </section>
       )}
 
-      {/* ── Estado vazio total ────────────────────────────── */}
+      {/* ── Estado vazio ──────────────────────────────────── */}
       {autoMatched.length === 0 && pendingReview.length === 0 &&
         unmatched.length === 0 && parseErrors.length === 0 && (
         <div className="text-center py-12 text-muted-foreground text-sm">
@@ -354,19 +393,21 @@ export default async function VeterinaryImportReviewPage({ params }: Props) {
         </div>
       )}
 
-      {/* ── Botão confirmar (desabilitado — Sprint 9.1C) ─── */}
-      <div className="pt-4 border-t border-border space-y-2">
-        <button
-          disabled
-          className="w-full sm:w-auto flex items-center gap-2 rounded-lg border border-border bg-muted px-4 py-2.5 text-sm font-medium text-muted-foreground cursor-not-allowed"
-        >
-          <Lock className="size-4" />
-          Confirmar importação — disponível na Sprint 9.1C
-        </button>
-        <p className="text-xs text-muted-foreground">
-          A confirmação criará os registros de reprodução, alertas e atualizará os dados
-          dos animais vinculados. Disponível após revisão completa dos vínculos.
-        </p>
+      {/* ── Confirmação ───────────────────────────────────── */}
+      <div className="pt-4 border-t border-border space-y-3">
+        <ConfirmImportButton
+          reportId={report.id}
+          linkedCount={linkedCount}
+          isAlreadyImported={isImported}
+          preview={preview as VeterinaryImportPreview}
+        />
+        {!isImported && (
+          <p className="text-xs text-muted-foreground">
+            A confirmação atualiza campos veterinários dos animais vinculados, cria registros
+            reprodutivos, eventos de saúde e alertas. Snapshots sem vínculo são preservados
+            como histórico mas não alteram dados reais.
+          </p>
+        )}
       </div>
     </div>
   )

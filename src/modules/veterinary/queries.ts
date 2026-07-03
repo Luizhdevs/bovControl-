@@ -1,11 +1,13 @@
 import { prisma } from '@/lib/prisma'
 import { VETERINARY_GROUP_LABELS, VETERINARY_GROUP_ORDER } from './constants'
+import { computeVeterinaryImportPlan } from './import-engine'
 import type {
   VeterinaryReportWithStats,
   VeterinarySnapshotWithAnimal,
   VeterinaryDashboardStats,
   VeterinaryReportSummary,
   VeterinaryGroupSummary,
+  VeterinaryImportPreview,
 } from './types'
 import type { VeterinaryReportFiltersInput } from './schemas'
 import type { VeterinaryReportGroup } from '@prisma/client'
@@ -337,3 +339,36 @@ export async function getVeterinaryImportReview(
 
 // Importa o tipo diretamente do Prisma para uso no retorno da última função
 import type { VeterinaryAnimalSnapshot } from '@prisma/client'
+
+// ─── Preview da confirmação (read-only) ───────────────────
+
+export async function buildVeterinaryImportPreview(
+  reportId: string,
+  farmId:   string,
+): Promise<VeterinaryImportPreview | null> {
+  const report = await prisma.veterinaryReport.findFirst({
+    where: { id: reportId, farmId },
+  })
+  if (!report) return null
+
+  const farmSettings = await prisma.farmSettings.findFirst({
+    where:  { farmId },
+    select: { ccsAlertThreshold: true, emptyDaysAlert: true },
+  })
+
+  const plan = await computeVeterinaryImportPlan(
+    report,
+    farmSettings ?? { ccsAlertThreshold: null, emptyDaysAlert: null },
+  )
+
+  return {
+    linkedCount:           plan.linkedSnapshots.length,
+    unmatchedCount:        plan.unlinkedSnapshots.length,
+    animalsToUpdate:       plan.animalUpdatePlans.length,
+    reproductionsToCreate: plan.reproductionsToCreate.length,
+    healthEventsToCreate:  plan.healthEventsToCreate.length,
+    alertsToCreate:        plan.alertsToCreate.length,
+    skippedSnapshots:      plan.skippedSnapshots,
+    warnings:              plan.warnings,
+  }
+}
