@@ -31,8 +31,6 @@ next-env.d.ts
 .DS_Store
 Thumbs.db
 
-# Prisma
-prisma/migrations/
 
 # Uploads locais (dev)
 public/uploads/
