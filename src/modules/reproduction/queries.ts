@@ -115,6 +115,12 @@ export async function getPregnantAnimals(
       ORDER BY r."animalId", r.date DESC
     ) latest
     WHERE latest.status = 'CONFIRMED'
+      AND NOT EXISTS (
+        SELECT 1 FROM reproductions calv
+        WHERE calv."animalId" = latest."animalId"
+          AND calv.type = 'CALVING'
+          AND calv.date >= latest."confirmedAt"
+      )
   `
 
   const today = new Date()
