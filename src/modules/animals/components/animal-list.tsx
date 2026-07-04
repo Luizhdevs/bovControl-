@@ -42,7 +42,7 @@ export function AnimalList({ animals, isFiltered }: AnimalListProps) {
       <div className="hidden md:block rounded-xl border border-border overflow-hidden">
         {/* Cabeçalho */}
         <div className={cn(
-          'grid gap-4 px-4 py-2.5 items-center',
+          'grid gap-3 px-4 py-2.5 items-center',
           'bg-muted/50 border-b border-border',
           'text-[11px] font-semibold uppercase tracking-wider text-muted-foreground',
           DESKTOP_COLS,
@@ -53,7 +53,6 @@ export function AnimalList({ animals, isFiltered }: AnimalListProps) {
           <div>Categoria</div>
           <div>Raça</div>
           <div>Lote</div>
-          <div>Idade</div>
           <div />
         </div>
 

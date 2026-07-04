@@ -8,7 +8,7 @@ import type { AnimalListItem } from '../types'
 // ─── Constantes ────────────────────────────────────────────
 
 export const DESKTOP_COLS =
-  '[grid-template-columns:44px_116px_1fr_108px_132px_160px_76px_20px]'
+  '[grid-template-columns:36px_96px_minmax(160px,1fr)_96px_110px_140px_20px]'
 
 const CATEGORY_COLORS: Record<string, string> = {
   COW:    'bg-purple-500/15 text-purple-400 border-purple-500/30',
@@ -128,7 +128,7 @@ export function AnimalCard({ animal }: { animal: AnimalListItem }) {
 
       {/* ── DESKTOP (md+) — linha de tabela ───────────────── */}
       <div className={cn(
-        'hidden md:grid items-center gap-4 px-4 py-3',
+        'hidden md:grid items-center gap-3 px-4 py-3',
         DESKTOP_COLS,
       )}>
         {/* Avatar */}
@@ -140,7 +140,7 @@ export function AnimalCard({ animal }: { animal: AnimalListItem }) {
         </span>
 
         {/* Nome */}
-        <span className="text-sm text-foreground font-medium truncate pr-2">
+        <span className="text-sm text-foreground font-medium truncate">
           {animal.name ?? <span className="text-muted-foreground italic text-xs">sem nome</span>}
         </span>
 
@@ -157,11 +157,6 @@ export function AnimalCard({ animal }: { animal: AnimalListItem }) {
         {/* Lote */}
         <span className={cn('text-xs truncate', animal.lot ? lotColor : 'text-muted-foreground/40')}>
           {animal.lot?.name ?? '—'}
-        </span>
-
-        {/* Idade */}
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {age ?? '—'}
         </span>
 
         {/* Ícone de finalidade */}
