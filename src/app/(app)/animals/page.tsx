@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation'
 import { Button }   from '@/components/ui/button'
 import { Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 
-import { getAnimalsByFarm, getAnimalStats } from '@/modules/animals/queries'
+import { getAnimalsByFarm, getAnimalStats, getLotsForSelect } from '@/modules/animals/queries'
 import { AnimalList }    from '@/modules/animals/components/animal-list'
 import { AnimalFilters } from '@/modules/animals/components/animal-filters'
 import { PageHeader }    from '@/components/shared/page-header'
@@ -130,8 +130,10 @@ async function AnimalListAsync({
   })
 
   const page = Math.max(1, parseInt(searchParams['page'] ?? '1', 10) || 1)
-  const { items, total, pageCount, page: currentPage } =
-    await getAnimalsByFarm(farmId, filters, page, PAGE_SIZE)
+  const [{ items, total, pageCount, page: currentPage }, lots] = await Promise.all([
+    getAnimalsByFarm(farmId, filters, page, PAGE_SIZE),
+    getLotsForSelect(farmId),
+  ])
 
   const isFiltered = Boolean(
     searchParams['search'] ||
@@ -141,7 +143,7 @@ async function AnimalListAsync({
 
   return (
     <>
-      <AnimalList animals={items} isFiltered={isFiltered} />
+      <AnimalList animals={items} isFiltered={isFiltered} lots={lots} farmId={farmId} />
       {pageCount > 1 && (
         <AnimalPagination
           page={currentPage}

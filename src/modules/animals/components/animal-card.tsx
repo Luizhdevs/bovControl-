@@ -1,8 +1,10 @@
+'use client'
+
 import Link from 'next/link'
 import Image from 'next/image'
 import { Badge } from '@/components/ui/badge'
 import { cn, calculateAge, CATEGORY_LABELS, LOT_TYPE_LABELS } from '@/lib/utils'
-import { MilkIcon, BeefIcon, Layers2Icon } from 'lucide-react'
+import { MilkIcon, BeefIcon, Layers2Icon, Check } from 'lucide-react'
 import type { AnimalListItem } from '../types'
 
 // ─── Constantes ────────────────────────────────────────────
@@ -26,6 +28,32 @@ const PURPOSE_ICONS = {
   DAIRY: MilkIcon,
   BEEF:  BeefIcon,
   BOTH:  Layers2Icon,
+}
+
+// ─── Checkbox customizado ──────────────────────────────────
+
+function AnimalCheckbox({
+  checked,
+  onChange,
+}: {
+  checked: boolean
+  onChange: () => void
+}) {
+  return (
+    <div
+      role="checkbox"
+      aria-checked={checked}
+      onClick={e => { e.preventDefault(); e.stopPropagation(); onChange() }}
+      className={cn(
+        'size-4 rounded border-2 flex items-center justify-center shrink-0 cursor-pointer transition-colors',
+        checked
+          ? 'bg-primary border-primary'
+          : 'border-muted-foreground/40 bg-background hover:border-primary/60',
+      )}
+    >
+      {checked && <Check className="size-2.5 text-primary-foreground stroke-[3]" />}
+    </div>
+  )
 }
 
 // ─── Avatar compartilhado ──────────────────────────────────
@@ -75,94 +103,114 @@ function AnimalAvatar({ animal, size }: { animal: AnimalListItem; size: 'sm' | '
 
 // ─── Componente ────────────────────────────────────────────
 
-export function AnimalCard({ animal }: { animal: AnimalListItem }) {
+interface AnimalCardProps {
+  animal:     AnimalListItem
+  isSelected?: boolean
+  onSelect?:   () => void
+}
+
+export function AnimalCard({ animal, isSelected = false, onSelect }: AnimalCardProps) {
   const age           = calculateAge(animal.birthDate)
   const categoryColor = CATEGORY_COLORS[animal.category] ?? ''
   const PurposeIcon   = PURPOSE_ICONS[animal.purpose]
   const lotColor      = LOT_TYPE_COLOR[animal.lot?.type ?? ''] ?? 'text-muted-foreground'
 
-  const baseLink = cn(
-    'group block transition-all duration-150',
-    'hover:bg-primary/5 active:scale-[0.99]',
-  )
-
   return (
-    <Link href={`/animals/${animal.id}`} className={baseLink}>
-
+    <>
       {/* ── MOBILE (< md) — card compacto ─────────────────── */}
       <div className={cn(
         'md:hidden flex items-center gap-3 p-3',
         'rounded-xl border border-border bg-card',
-        'min-h-[88px] hover:border-primary/40 hover:shadow-md hover:shadow-primary/5',
+        'min-h-[88px] transition-all duration-150',
+        isSelected
+          ? 'border-primary/60 bg-primary/5'
+          : 'hover:border-primary/40 hover:shadow-md hover:shadow-primary/5',
       )}>
-        <AnimalAvatar animal={animal} size="md" />
+        {/* Checkbox mobile */}
+        {onSelect && (
+          <AnimalCheckbox checked={isSelected} onChange={onSelect} />
+        )}
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-1.5">
-            <span className="font-mono text-sm font-bold text-foreground">{animal.tag}</span>
-            {animal.name && (
-              <span className="text-sm text-muted-foreground truncate">· {animal.name}</span>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5 mt-1">
-            <Badge variant="outline" className={cn('text-[11px] px-1.5 py-0 h-5', categoryColor)}>
-              {CATEGORY_LABELS[animal.category]}
-            </Badge>
-            <span className="text-xs text-muted-foreground truncate">{animal.breed}</span>
-          </div>
-          <div className="flex items-center gap-2 mt-1">
-            {animal.birthDate && (
-              <span className="text-xs text-muted-foreground">{age}</span>
-            )}
-            {animal.lot && (
-              <>
-                {animal.birthDate && <span className="text-muted-foreground/40 text-xs">·</span>}
-                <span className={cn('text-xs truncate', lotColor)}>{animal.lot.name}</span>
-              </>
-            )}
-          </div>
-        </div>
+        <Link
+          href={`/animals/${animal.id}`}
+          className="flex items-center gap-3 flex-1 min-w-0"
+          onClick={e => onSelect && isSelected && e.preventDefault()}
+        >
+          <AnimalAvatar animal={animal} size="md" />
 
-        <PurposeIcon className="size-4 shrink-0 text-muted-foreground/40" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-mono text-sm font-bold text-foreground">{animal.tag}</span>
+              {animal.name && (
+                <span className="text-sm text-muted-foreground truncate">· {animal.name}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 mt-1">
+              <Badge variant="outline" className={cn('text-[11px] px-1.5 py-0 h-5', categoryColor)}>
+                {CATEGORY_LABELS[animal.category]}
+              </Badge>
+              <span className="text-xs text-muted-foreground truncate">{animal.breed}</span>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              {animal.birthDate && (
+                <span className="text-xs text-muted-foreground">{age}</span>
+              )}
+              {animal.lot && (
+                <>
+                  {animal.birthDate && <span className="text-muted-foreground/40 text-xs">·</span>}
+                  <span className={cn('text-xs truncate', lotColor)}>{animal.lot.name}</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          <PurposeIcon className="size-4 shrink-0 text-muted-foreground/40" />
+        </Link>
       </div>
 
       {/* ── DESKTOP (md+) — linha de tabela ───────────────── */}
       <div className={cn(
-        'hidden md:grid items-center gap-3 px-4 py-3',
-        DESKTOP_COLS,
+        'hidden md:flex items-center transition-all duration-150',
+        isSelected ? 'bg-primary/5' : 'hover:bg-primary/5',
       )}>
-        {/* Avatar */}
-        <AnimalAvatar animal={animal} size="sm" />
-
-        {/* Tag */}
-        <span className="font-mono text-sm font-semibold text-foreground tracking-tight">
-          {animal.tag}
-        </span>
-
-        {/* Nome */}
-        <span className="text-sm text-foreground font-medium truncate">
-          {animal.name ?? <span className="text-muted-foreground italic text-xs">sem nome</span>}
-        </span>
-
-        {/* Categoria */}
-        <div>
-          <Badge variant="outline" className={cn('text-[11px] px-2 py-0 h-5', categoryColor)}>
-            {CATEGORY_LABELS[animal.category]}
-          </Badge>
+        {/* Checkbox — fora do link para evitar conflito de interação */}
+        <div
+          className="w-10 flex-none flex items-center justify-center py-3 cursor-pointer"
+          onClick={() => onSelect?.()}
+        >
+          <AnimalCheckbox checked={isSelected} onChange={() => onSelect?.()} />
         </div>
 
-        {/* Raça */}
-        <span className="text-xs text-muted-foreground truncate">{animal.breed}</span>
+        {/* Conteúdo — link ocupa o restante */}
+        <Link
+          href={`/animals/${animal.id}`}
+          className={cn('flex-1 grid items-center gap-3 pr-4 py-3', DESKTOP_COLS)}
+        >
+          <AnimalAvatar animal={animal} size="sm" />
 
-        {/* Lote */}
-        <span className={cn('text-xs truncate', animal.lot ? lotColor : 'text-muted-foreground/40')}>
-          {animal.lot?.name ?? '—'}
-        </span>
+          <span className="font-mono text-sm font-semibold text-foreground tracking-tight">
+            {animal.tag}
+          </span>
 
-        {/* Ícone de finalidade */}
-        <PurposeIcon className="size-4 text-muted-foreground/40 justify-self-end" />
+          <span className="text-sm text-foreground font-medium truncate">
+            {animal.name ?? <span className="text-muted-foreground italic text-xs">sem nome</span>}
+          </span>
+
+          <div>
+            <Badge variant="outline" className={cn('text-[11px] px-2 py-0 h-5', categoryColor)}>
+              {CATEGORY_LABELS[animal.category]}
+            </Badge>
+          </div>
+
+          <span className="text-xs text-muted-foreground truncate">{animal.breed}</span>
+
+          <span className={cn('text-xs truncate', animal.lot ? lotColor : 'text-muted-foreground/40')}>
+            {animal.lot?.name ?? '—'}
+          </span>
+
+          <PurposeIcon className="size-4 text-muted-foreground/40 justify-self-end" />
+        </Link>
       </div>
-
-    </Link>
+    </>
   )
 }

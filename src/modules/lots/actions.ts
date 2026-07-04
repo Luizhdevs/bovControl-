@@ -198,6 +198,88 @@ export async function deactivateLot(
   }
 }
 
+// ─── Mover animais em lote ────────────────────────────────
+
+export async function bulkMoveAnimalsToLot(
+  farmId:      string,
+  animalIds:   string[],
+  targetLotId: string,
+): Promise<ActionResult<{ moved: number; skipped: number }>> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado' }
+
+    await requireFarmAccess(session.user.id, farmId, 'WORKER')
+
+    if (animalIds.length === 0) {
+      return { success: false, error: 'Nenhum animal selecionado.' }
+    }
+
+    // Valida lote de destino
+    const targetLot = await prisma.lot.findFirst({
+      where:  { id: targetLotId, farmId, isActive: true },
+      select: { id: true, type: true },
+    })
+    if (!targetLot) return { success: false, error: 'Lote de destino não encontrado ou inativo.' }
+
+    // Farm settings para milkStatus automático
+    const farmSettings = await prisma.farmSettings.findUnique({
+      where:  { farmId },
+      select: { autoUpdateMilkStatus: true },
+    })
+
+    // Carrega todos os animais selecionados
+    const animals = await prisma.animal.findMany({
+      where:  { id: { in: animalIds }, farmId },
+      select: { id: true, sex: true, category: true, status: true, birthType: true, lotId: true, milkStatus: true },
+    })
+
+    let moved   = 0
+    let skipped = 0
+
+    for (const animal of animals) {
+      const moveGuard = canMoveToLot(animal)
+      if (!moveGuard.allowed) { skipped++; continue }
+
+      let newCategory = animal.category
+      if (shouldUpgradeToCowByLot(animal, targetLot)) newCategory = 'COW'
+
+      let newMilkStatus = animal.milkStatus
+      if (farmSettings?.autoUpdateMilkStatus ?? true) {
+        if (targetLot.type === 'LACTATING')                               newMilkStatus = 'LACTATING'
+        else if (targetLot.type === 'DRY' || targetLot.type === 'MATERNITY') newMilkStatus = 'DRY'
+        else if (targetLot.type === 'HEIFER')                             newMilkStatus = 'HEIFER'
+      }
+
+      await prisma.animal.update({
+        where: { id: animal.id },
+        data:  { lotId: targetLotId, category: newCategory, milkStatus: newMilkStatus },
+      })
+
+      auditUpdate({
+        farmId,
+        userId:   session.user.id,
+        entity:   'Animal',
+        entityId: animal.id,
+        before:   { lotId: animal.lotId },
+        after:    { lotId: targetLotId },
+        metadata: { previousLotId: animal.lotId, targetLotId, reason: 'bulk_transfer' },
+      })
+
+      moved++
+    }
+
+    revalidatePath('/lots')
+    revalidatePath(`/lots/${targetLotId}`)
+    revalidatePath('/animals')
+
+    return { success: true, data: { moved, skipped } }
+  } catch (error) {
+    console.error('[bulkMoveAnimalsToLot]', error)
+    return { success: false, error: 'Erro ao transferir animais. Tente novamente.' }
+  }
+}
+
 // ─── Excluir lote ──────────────────────────────────────────
 
 export async function deleteLot(
