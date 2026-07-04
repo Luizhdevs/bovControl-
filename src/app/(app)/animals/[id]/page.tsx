@@ -97,67 +97,91 @@ export default async function AnimalDetailPage({
     <div className={cn('space-y-4', isActive ? 'pb-28' : 'pb-6')}>
 
       {/* ── HERO ─────────────────────────────────────── */}
-      <div className="relative -mx-4">
+      <div>
+        {/* Navegação desktop — fora da foto */}
+        <div className="hidden md:flex items-center justify-between mb-3">
+          <Link
+            href="/animals"
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronLeft className="size-4" />
+            Animais
+          </Link>
+          <Link
+            href={`/ear-tags/print?animalId=${animal.id}`}
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Tag className="size-3.5" />
+            Etiqueta
+          </Link>
+        </div>
 
-        {/* Foto / fundo */}
-        <div className="relative h-72 overflow-hidden">
+        {/* Foto / fundo — mobile: full-bleed; desktop: card arredondado */}
+        <div className={cn(
+          'relative overflow-hidden',
+          'h-72 -mx-4',
+          'md:h-[460px] md:mx-0 md:rounded-2xl',
+        )}>
           {primaryPhoto ? (
             <Image
               src={primaryPhoto.url}
               alt={`Foto de ${animal.tag}`}
               fill
-              sizes="100vw"
-              className="object-cover"
+              sizes="(min-width: 768px) calc(100vw - 224px), 100vw"
+              className="object-cover object-center"
               priority
             />
           ) : (
             <div className={cn('absolute inset-0 bg-gradient-to-br', sexColor, 'flex items-center justify-center')}>
-              <span className="text-[120px] font-black text-white/5 font-mono select-none leading-none">
+              <span className="text-[140px] font-black text-white/5 font-mono select-none leading-none">
                 {animal.name?.[0]?.toUpperCase() ?? animal.tag.slice(-2)}
               </span>
             </div>
           )}
 
-          {/* Gradiente base-topo */}
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/30 to-transparent" />
+          {/* Gradiente base → topo — mais intenso no desktop para ler o texto */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
-          {/* Navegação — topo */}
-          <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 pt-3">
+          {/* Navegação mobile — overlay dentro da foto */}
+          <div className="md:hidden absolute top-0 left-0 right-0 flex items-center justify-between px-4 pt-3">
             <Link
               href="/animals"
-              className="inline-flex items-center gap-1 text-sm text-white/80 hover:text-white transition-colors backdrop-blur-sm bg-black/20 rounded-full px-3 py-1.5"
+              className="inline-flex items-center gap-1 text-sm text-white/80 hover:text-white transition-colors backdrop-blur-sm bg-black/25 rounded-full px-3 py-1.5"
             >
               <ChevronLeft className="size-4" />
               Animais
             </Link>
             <Link
               href={`/ear-tags/print?animalId=${animal.id}`}
-              className="inline-flex items-center gap-1 text-xs text-white/70 hover:text-white transition-colors backdrop-blur-sm bg-black/20 rounded-full px-3 py-1.5"
+              className="inline-flex items-center gap-1 text-xs text-white/70 hover:text-white transition-colors backdrop-blur-sm bg-black/25 rounded-full px-3 py-1.5"
             >
               <Tag className="size-3.5" />
               Etiqueta
             </Link>
           </div>
 
-          {/* Indicador de sexo — topo direito */}
-          <div className={cn('absolute top-12 right-4 size-9 rounded-full flex items-center justify-center text-base font-bold text-white shadow-lg', sexAccent)}>
+          {/* Indicador de sexo */}
+          <div className={cn(
+            'absolute right-4 size-9 rounded-full flex items-center justify-center text-base font-bold text-white shadow-lg',
+            'top-12 md:top-4',
+            sexAccent,
+          )}>
             {animal.sex === 'FEMALE' ? '♀' : '♂'}
           </div>
 
-          {/* Identidade — sobreposta no fundo da foto */}
-          <div className="absolute bottom-0 left-0 right-0 px-4 pb-4">
+          {/* Identidade sobreposta na base */}
+          <div className="absolute bottom-0 left-0 right-0 px-4 md:px-6 pb-4 md:pb-6">
             <div className="flex items-end justify-between gap-3">
               <div className="min-w-0">
-                <p className="font-mono text-2xl font-black text-white drop-shadow-md leading-none">
+                <p className="font-mono text-2xl md:text-4xl font-black text-white drop-shadow-lg leading-none">
                   {animal.tag}
                 </p>
                 {animal.name && (
-                  <p className="text-white/75 text-base mt-0.5 truncate drop-shadow">
+                  <p className="text-white/75 text-base md:text-xl mt-1 truncate drop-shadow">
                     {animal.name}
                   </p>
                 )}
               </div>
-              {/* Status badge */}
               {animal.status !== 'ACTIVE' && (
                 <span className={cn(
                   'shrink-0 text-xs font-semibold rounded-full px-3 py-1',
@@ -167,11 +191,28 @@ export default async function AnimalDetailPage({
                 </span>
               )}
             </div>
+
+            {/* Chips — apenas desktop, sobrepostos na foto */}
+            <div className="hidden md:flex flex-wrap gap-2 mt-3">
+              <CategoryBadge category={animal.category} size="lg" />
+              {animal.lot && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-white/15 backdrop-blur-sm text-white border border-white/20">
+                  {animal.lot.name}
+                  <span className="text-white/60">· {LOT_TYPE_LABELS[animal.lot.type]}</span>
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-white/15 backdrop-blur-sm text-white border border-white/20">
+                {animal.breed}
+              </span>
+              {animal.birthType === 'INSEMINATION' && (
+                <InseminationBadge size="lg" />
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Chips de categoria — faixa abaixo da foto */}
-        <div className="px-4 pt-3 flex flex-wrap gap-2">
+        {/* Chips — apenas mobile, abaixo da foto */}
+        <div className="md:hidden px-4 pt-3 flex flex-wrap gap-2">
           <CategoryBadge category={animal.category} size="lg" />
           {animal.lot && (
             <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border border-border bg-card text-muted-foreground">
@@ -189,28 +230,20 @@ export default async function AnimalDetailPage({
       </div>
 
       {/* ── STATS RÁPIDAS ───────────────────────────── */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-xl border border-border bg-card p-3 flex flex-col items-center gap-1">
-          <div className="size-8 rounded-lg bg-cyan-500/10 flex items-center justify-center">
-            <Droplets className="size-4 text-cyan-400" />
+      <div className="grid grid-cols-3 gap-2 md:gap-3">
+        {[
+          { icon: Droplets, color: 'text-cyan-400', bg: 'bg-cyan-500/10', value: animal._count.milkRecords, label: 'Registros de Leite' },
+          { icon: Scale,    color: 'text-blue-400', bg: 'bg-blue-500/10',  value: animal.weightRecords.length,  label: 'Pesagens' },
+          { icon: Heart,    color: 'text-red-400',  bg: 'bg-red-500/10',   value: animal._count.healthEvents,   label: 'Eventos de Saúde' },
+        ].map(({ icon: Icon, color, bg, value, label }) => (
+          <div key={label} className="rounded-xl border border-border bg-card p-3 md:p-5 flex flex-col items-center gap-1.5">
+            <div className={cn('size-8 md:size-10 rounded-lg flex items-center justify-center', bg)}>
+              <Icon className={cn('size-4 md:size-5', color)} />
+            </div>
+            <span className="text-lg md:text-2xl font-bold tabular-nums">{value}</span>
+            <span className="text-[10px] md:text-xs text-muted-foreground leading-tight text-center">{label}</span>
           </div>
-          <span className="text-lg font-bold tabular-nums">{animal._count.milkRecords}</span>
-          <span className="text-[10px] text-muted-foreground leading-tight text-center">Leite</span>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-3 flex flex-col items-center gap-1">
-          <div className="size-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-            <Scale className="size-4 text-blue-400" />
-          </div>
-          <span className="text-lg font-bold tabular-nums">{animal.weightRecords.length}</span>
-          <span className="text-[10px] text-muted-foreground leading-tight text-center">Pesagens</span>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-3 flex flex-col items-center gap-1">
-          <div className="size-8 rounded-lg bg-red-500/10 flex items-center justify-center">
-            <Heart className="size-4 text-red-400" />
-          </div>
-          <span className="text-lg font-bold tabular-nums">{animal._count.healthEvents}</span>
-          <span className="text-[10px] text-muted-foreground leading-tight text-center">Saúde</span>
-        </div>
+        ))}
       </div>
 
       {/* ── AÇÕES RÁPIDAS (Client Component) ─────────── */}
