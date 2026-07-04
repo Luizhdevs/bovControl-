@@ -110,6 +110,10 @@ export async function getAnimalById(
       lot:    true,
       mother: { select: { id: true, tag: true, name: true } },
       father: { select: { id: true, tag: true, name: true } },
+      maternalChildren: {
+        select:  { id: true, tag: true, name: true, sex: true, category: true, birthDate: true, status: true },
+        orderBy: { birthDate: 'desc' },
+      },
       photos: { orderBy: { takenAt: 'desc' } },
       weightRecords: {
         orderBy: { measuredAt: 'desc' },

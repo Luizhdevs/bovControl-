@@ -25,10 +25,13 @@ export type AnimalListItem = {
 
 // ─── Animal completo com relações ─────────────────────────
 
+export type AnimalOffspring = Pick<Animal, 'id' | 'tag' | 'name' | 'sex' | 'category' | 'birthDate' | 'status'>
+
 export type AnimalWithRelations = Animal & {
   lot:    Lot | null
   mother: Pick<Animal, 'id' | 'tag' | 'name'> | null
   father: Pick<Animal, 'id' | 'tag' | 'name'> | null
+  maternalChildren: AnimalOffspring[]
   photos: AnimalPhoto[]
   weightRecords: WeightRecord[]
   reproductions: Reproduction[]

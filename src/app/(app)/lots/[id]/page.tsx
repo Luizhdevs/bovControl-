@@ -209,6 +209,7 @@ export default async function LotDetailPage({
         farmId={farmId}
         availableAnimals={availableAnimals}
         userRole={role}
+        animalCount={stats.total}
       />
 
     </div>

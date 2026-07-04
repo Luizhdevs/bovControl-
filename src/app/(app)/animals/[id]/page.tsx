@@ -30,7 +30,7 @@ import {
   BIRTH_TYPE_LABELS,
   LOT_TYPE_LABELS,
 } from '@/lib/utils'
-import { Scale, MilkIcon, Heart, Camera, Wheat, ClipboardList, Tag, Stethoscope } from 'lucide-react'
+import { Scale, MilkIcon, Heart, Camera, Wheat, ClipboardList, Tag, Stethoscope, Baby } from 'lucide-react'
 
 // ─── Metadata dinâmica ─────────────────────────────────────
 
@@ -243,6 +243,41 @@ export default async function AnimalDetailPage({
               />
             )}
           </InfoRows>
+        </SectionCard>
+      )}
+
+      {/* Seção: Crias */}
+      {animal.maternalChildren.length > 0 && (
+        <SectionCard
+          title="Crias"
+          subtitle={`${animal.maternalChildren.length} bezerro${animal.maternalChildren.length !== 1 ? 's' : ''}`}
+        >
+          <div className="space-y-1">
+            {animal.maternalChildren.map((cria) => (
+              <Link
+                key={cria.id}
+                href={`/animals/${cria.id}`}
+                className="flex items-center justify-between py-1.5 rounded-lg hover:bg-muted/50 px-2 -mx-2 transition-colors"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Baby className={cn(
+                    'size-3.5 shrink-0',
+                    cria.sex === 'FEMALE' ? 'text-pink-400' : 'text-sky-400',
+                  )} />
+                  <span className="font-mono text-sm font-semibold text-primary">{cria.tag}</span>
+                  {cria.name && (
+                    <span className="text-sm text-muted-foreground truncate">· {cria.name}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {cria.birthDate && (
+                    <span className="text-xs text-muted-foreground">{formatDate(cria.birthDate)}</span>
+                  )}
+                  <CategoryBadge category={cria.category} size="sm" />
+                </div>
+              </Link>
+            ))}
+          </div>
         </SectionCard>
       )}
 

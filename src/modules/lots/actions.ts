@@ -198,6 +198,52 @@ export async function deactivateLot(
   }
 }
 
+// ─── Excluir lote ──────────────────────────────────────────
+
+export async function deleteLot(
+  lotId:  string,
+  farmId: string,
+): Promise<ActionResult<void>> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado' }
+
+    await requireFarmAccess(session.user.id, farmId, 'MANAGER')
+
+    const lot = await prisma.lot.findFirst({
+      where:  { id: lotId, farmId },
+      select: {
+        id: true,
+        name: true,
+        _count: { select: { animals: true, feedSessions: true } },
+      },
+    })
+    if (!lot) return { success: false, error: 'Lote não encontrado' }
+
+    if (lot._count.animals > 0) {
+      return {
+        success: false,
+        error:   `Não é possível excluir: o lote possui ${lot._count.animals} animal(is). Remova todos antes de excluir.`,
+      }
+    }
+    if (lot._count.feedSessions > 0) {
+      return {
+        success: false,
+        error:   'Não é possível excluir: existem registros de alimentação vinculados a este lote.',
+      }
+    }
+
+    await prisma.lot.delete({ where: { id: lotId } })
+
+    revalidatePath('/lots')
+
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[deleteLot]', error)
+    return { success: false, error: 'Erro ao excluir lote. Tente novamente.' }
+  }
+}
+
 // ─── Mover animal para lote ────────────────────────────────
 
 /**
