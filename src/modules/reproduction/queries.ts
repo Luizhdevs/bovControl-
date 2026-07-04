@@ -119,7 +119,15 @@ export async function getPregnantAnimals(
         SELECT 1 FROM reproductions calv
         WHERE calv."animalId" = latest."animalId"
           AND calv.type = 'CALVING'
-          AND calv.date >= latest."confirmedAt"
+          AND calv.date >= (
+            SELECT COALESCE(
+              MAX(ins.date),
+              latest."confirmedAt" - INTERVAL '365 days'
+            )
+            FROM reproductions ins
+            WHERE ins."animalId" = latest."animalId"
+              AND ins.type IN ('INSEMINATION', 'NATURAL_MATING')
+          )
       )
   `
 
