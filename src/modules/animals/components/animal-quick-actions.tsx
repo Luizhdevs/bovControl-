@@ -12,7 +12,6 @@ import {
   SheetHeader,
   SheetTitle,
   SheetDescription,
-  SheetClose,
 } from '@/components/ui/sheet'
 import {
   Select,
@@ -21,7 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { MobileBottomActions } from '@/components/shared/mobile-bottom-actions'
 import { QuickActionBar, type QuickAction } from '@/components/shared/quick-action-bar'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 
@@ -46,13 +44,15 @@ import {
   Loader2,
   CheckCircle2,
   Tag,
+  MoreHorizontal,
+  DollarSign,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { LotSelectOption } from '../types'
 
 // ─── Tipos ─────────────────────────────────────────────────
 
-type SheetType = 'lot' | 'weight' | 'milk' | 'photo' | null
+type SheetType = 'lot' | 'weight' | 'milk' | 'photo' | 'more' | null
 
 interface AnimalQuickActionsProps {
   animalId:    string
@@ -651,47 +651,36 @@ export function AnimalQuickActions({
         <QuickActionBar actions={quickActions} className="mb-4" />
       )}
 
-      {/* Rodapé fixo */}
+      {/* Rodapé fixo — single row */}
       {isActive && (
-        <MobileBottomActions
-          primary={[
-            {
-              label: 'Editar',
-              icon:  Edit2,
-              href:  `/animals/${animalId}/edit`,
-              variant: 'outline',
-            },
-            {
-              label:   'Trocar Lote',
-              icon:    ArrowLeftRight,
-              onClick: () => setOpenSheet('lot'),
-              disabled: !guards.lot.allowed,
-              disabledReason: guards.lot.reason,
-            },
-          ]}
-          secondary={
-            canManage
-              ? [
-                  {
-                    label:   'Vendido',
-                    variant: 'outline' as const,
-                    onClick: () => handleDeactivate('SOLD'),
-                    disabled: !guards.slaughter.allowed || isPending,
-                    disabledReason: guards.slaughter.allowed ? undefined : guards.slaughter.reason,
-                    className: guards.slaughter.allowed ? 'text-amber-400 border-amber-400/30' : '',
-                  },
-                  {
-                    label:    'Óbito',
-                    icon:     AlertTriangle,
-                    variant:  'outline' as const,
-                    onClick:  () => handleDeactivate('DEAD'),
-                    disabled: isPending,
-                    className: 'text-destructive border-destructive/30',
-                  },
-                ]
-              : undefined
-          }
-        />
+        <div className="fixed bottom-0 left-0 right-0 z-20 bg-background/95 backdrop-blur-md border-t border-border px-4 pt-3 pb-5">
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1 h-12 text-sm font-medium" asChild>
+              <a href={`/animals/${animalId}/edit`}>
+                <Edit2 className="size-4 mr-2" />
+                Editar
+              </a>
+            </Button>
+            <Button
+              className="flex-1 h-12 text-sm font-medium"
+              onClick={() => setOpenSheet('lot')}
+              disabled={!guards.lot.allowed}
+              title={guards.lot.allowed ? undefined : guards.lot.reason}
+            >
+              <ArrowLeftRight className="size-4 mr-2" />
+              Trocar Lote
+            </Button>
+            {canManage && (
+              <Button
+                variant="outline"
+                className="h-12 w-12 px-0 shrink-0"
+                onClick={() => setOpenSheet('more')}
+              >
+                <MoreHorizontal className="size-5" />
+              </Button>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Sheets de ação rápida */}
@@ -724,6 +713,58 @@ export function AnimalQuickActions({
         open={openSheet === 'photo'}
         onClose={() => setOpenSheet(null)}
       />
+
+      {/* Sheet: Mais ações (Vendido / Óbito) */}
+      {canManage && (
+        <Sheet open={openSheet === 'more'} onOpenChange={(v) => !v && setOpenSheet(null)}>
+          <SheetContent side="bottom" className="rounded-t-2xl pb-8">
+            <SheetHeader className="mb-5">
+              <SheetTitle>Mais ações</SheetTitle>
+              <SheetDescription>
+                Ações que alteram o status permanente do animal.
+              </SheetDescription>
+            </SheetHeader>
+            <div className="space-y-3">
+              <button
+                type="button"
+                disabled={!guards.slaughter.allowed || isPending}
+                onClick={() => { setOpenSheet(null); handleDeactivate('SOLD') }}
+                className={cn(
+                  'w-full flex items-center gap-3 rounded-xl border px-4 py-3.5 text-sm font-medium transition-colors',
+                  guards.slaughter.allowed
+                    ? 'border-amber-500/30 bg-amber-500/5 text-amber-500 hover:bg-amber-500/10'
+                    : 'border-border text-muted-foreground opacity-50 cursor-not-allowed',
+                )}
+              >
+                <div className="size-9 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
+                  <DollarSign className="size-4 text-amber-500" />
+                </div>
+                <div className="text-left">
+                  <p className="font-semibold">Registrar como Vendido</p>
+                  {!guards.slaughter.allowed && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{guards.slaughter.reason}</p>
+                  )}
+                </div>
+              </button>
+
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => { setOpenSheet(null); handleDeactivate('DEAD') }}
+                className="w-full flex items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3.5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+              >
+                <div className="size-9 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="size-4 text-destructive" />
+                </div>
+                <div className="text-left">
+                  <p className="font-semibold">Registrar Óbito</p>
+                  <p className="text-xs text-destructive/70 mt-0.5">Esta ação não pode ser desfeita</p>
+                </div>
+              </button>
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
     </>
   )
 }
