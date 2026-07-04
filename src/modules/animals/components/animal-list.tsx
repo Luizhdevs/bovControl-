@@ -1,6 +1,7 @@
 import { PawPrint } from 'lucide-react'
-import { AnimalCard } from './animal-card'
+import { AnimalCard, DESKTOP_COLS } from './animal-card'
 import { EmptyState } from '@/components/shared/empty-state'
+import { cn } from '@/lib/utils'
 import type { AnimalListItem } from '../types'
 
 interface AnimalListProps {
@@ -8,10 +9,6 @@ interface AnimalListProps {
   isFiltered?: boolean
 }
 
-/**
- * Renderiza a grade de cards de animais.
- * Grid responsivo: 1 coluna no mobile, 2 no tablet, 3 no desktop.
- */
 export function AnimalList({ animals, isFiltered }: AnimalListProps) {
   if (animals.length === 0) {
     return (
@@ -33,10 +30,40 @@ export function AnimalList({ animals, isFiltered }: AnimalListProps) {
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-      {animals.map((animal) => (
-        <AnimalCard key={animal.id} animal={animal} />
-      ))}
-    </div>
+    <>
+      {/* ── MOBILE: grade de cards ────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:hidden">
+        {animals.map((animal) => (
+          <AnimalCard key={animal.id} animal={animal} />
+        ))}
+      </div>
+
+      {/* ── DESKTOP: tabela com cabeçalho fixo ───────────── */}
+      <div className="hidden md:block rounded-xl border border-border overflow-hidden">
+        {/* Cabeçalho */}
+        <div className={cn(
+          'grid gap-4 px-4 py-2.5 items-center',
+          'bg-muted/50 border-b border-border',
+          'text-[11px] font-semibold uppercase tracking-wider text-muted-foreground',
+          DESKTOP_COLS,
+        )}>
+          <div /> {/* avatar */}
+          <div>Brinco</div>
+          <div>Nome</div>
+          <div>Categoria</div>
+          <div>Raça</div>
+          <div>Lote</div>
+          <div>Idade</div>
+          <div />
+        </div>
+
+        {/* Linhas */}
+        <div className="divide-y divide-border">
+          {animals.map((animal) => (
+            <AnimalCard key={animal.id} animal={animal} />
+          ))}
+        </div>
+      </div>
+    </>
   )
 }
