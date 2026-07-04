@@ -363,14 +363,18 @@ function PhotoSheet({
   open:     boolean
   onClose:  () => void
 }) {
-  const [caption, setCaption] = useState('')
-  const [isPending, start]    = useTransition()
-  const fileRef               = useRef<HTMLInputElement>(null)
-  const { toast }             = useToast()
+  const [fileName, setFileName] = useState<string | null>(null)
+  const [isPending, start]      = useTransition()
+  const fileRef                 = useRef<HTMLInputElement>(null)
+  const { toast }               = useToast()
 
-  // Espelha as restrições do /api/upload — feedback imediato antes do request
   const ALLOWED_TYPES  = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
-  const MAX_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB
+  const MAX_SIZE_BYTES = 5 * 1024 * 1024
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    setFileName(file?.name ?? null)
+  }
 
   function handleUpload() {
     const file = fileRef.current?.files?.[0]
@@ -378,56 +382,37 @@ function PhotoSheet({
       toast({ title: 'Selecione uma foto', variant: 'destructive' })
       return
     }
-
     if (!ALLOWED_TYPES.includes(file.type)) {
-      toast({
-        title:       'Formato inválido',
-        description: 'Use JPEG, PNG, WebP ou HEIC.',
-        variant:     'destructive',
-      })
+      toast({ title: 'Formato inválido', description: 'Use JPEG, PNG, WebP ou HEIC.', variant: 'destructive' })
       return
     }
-
     if (file.size > MAX_SIZE_BYTES) {
-      toast({
-        title:       'Arquivo muito grande',
-        description: 'Máximo de 5 MB por foto.',
-        variant:     'destructive',
-      })
+      toast({ title: 'Arquivo muito grande', description: 'Máximo de 5 MB por foto.', variant: 'destructive' })
       return
     }
 
     start(async () => {
       try {
-        // Envia o arquivo para /api/upload via FormData
         const form = new FormData()
         form.append('file',     file)
-        form.append('animalId', animalId)   // validação de posse no servidor
+        form.append('animalId', animalId)
 
         const response = await fetch('/api/upload', { method: 'POST', body: form })
         const data = (await response.json()) as {
-          url?:          string
-          thumbnailUrl?: string
-          sizeKb?:       number
-          error?:        string
+          url?: string; thumbnailUrl?: string; sizeKb?: number; error?: string
         }
 
         if (!response.ok || !data.url) {
-          toast({
-            title:       'Erro no upload',
-            description: data.error ?? 'Tente novamente.',
-            variant:     'destructive',
-          })
+          toast({ title: 'Erro no upload', description: data.error ?? 'Tente novamente.', variant: 'destructive' })
           return
         }
 
-        // Persiste as URLs e metadados no banco via Server Action
         const result = await addAnimalPhoto(farmId, {
           animalId,
           url:          data.url,
           thumbnailUrl: data.thumbnailUrl ?? null,
           sizeKb:       data.sizeKb ?? 0,
-          caption:      caption || null,
+          caption:      null,
         })
 
         if (!result.success) {
@@ -436,7 +421,7 @@ function PhotoSheet({
         }
 
         toast({ title: 'Foto adicionada!' })
-        setCaption('')
+        setFileName(null)
         if (fileRef.current) fileRef.current.value = ''
         onClose()
       } catch {
@@ -448,54 +433,47 @@ function PhotoSheet({
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent side="bottom" className="rounded-t-2xl pb-8">
-        <SheetHeader className="mb-5">
+        <SheetHeader className="mb-6">
           <SheetTitle>Adicionar Foto</SheetTitle>
-          <SheetDescription>
-            A foto será adicionada à linha do tempo do animal.
-          </SheetDescription>
         </SheetHeader>
 
         <div className="space-y-4">
-          {/* Input de arquivo */}
-          <div
-            className="border-2 border-dashed border-border rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer active:bg-muted/50"
-            onClick={() => fileRef.current?.click()}
+          {/* Área de seleção — label nativa evita o teclado no iOS */}
+          <label
+            htmlFor="photo-file-input"
+            className={cn(
+              'flex flex-col items-center gap-3 rounded-xl border-2 border-dashed p-10 cursor-pointer transition-colors',
+              fileName
+                ? 'border-primary/40 bg-primary/5'
+                : 'border-border hover:border-primary/30 active:bg-muted/40',
+            )}
           >
-            <Camera className="size-8 text-muted-foreground/50" />
-            <span className="text-sm text-muted-foreground">
-              Toque para selecionar ou tirar foto
+            <Camera className={cn('size-8', fileName ? 'text-primary' : 'text-muted-foreground/40')} />
+            <span className="text-sm text-center text-muted-foreground leading-snug">
+              {fileName ?? 'Toque para selecionar ou tirar foto'}
             </span>
             <input
+              id="photo-file-input"
               ref={fileRef}
               type="file"
               accept="image/*"
-              className="hidden"
+              capture="environment"
+              className="sr-only"
+              onChange={handleFileChange}
             />
-          </div>
-
-          {/* Legenda */}
-          <div className="space-y-2">
-            <Label>Legenda (opcional)</Label>
-            <Input
-              placeholder="Ex: Pesagem trimestral, Após parto..."
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              className="h-12"
-              style={{ fontSize: '16px' }}
-            />
-          </div>
+          </label>
 
           <Button
             className="w-full h-12 text-base"
             onClick={handleUpload}
-            disabled={isPending}
+            disabled={isPending || !fileName}
           >
             {isPending ? (
               <Loader2 className="size-4 animate-spin mr-2" />
             ) : (
               <Camera className="size-4 mr-2" />
             )}
-            Enviar Foto
+            {isPending ? 'Enviando...' : 'Enviar Foto'}
           </Button>
         </div>
       </SheetContent>
