@@ -7,7 +7,7 @@ import { getActiveFarm } from '@/lib/active-farm'
 import { getAnimalById, getLotsForSelect }             from '@/modules/animals/queries'
 import { getSnapshotHistoryForAnimalCard }             from '@/modules/veterinary/queries'
 import { VeterinaryGroupBadge }                        from '@/modules/veterinary/components/veterinary-group-badge'
-import { REPORT_SOURCE_LABELS }                        from '@/modules/veterinary/constants'
+import { REPORT_SOURCE_LABELS, DAY_MEANING_LABELS }    from '@/modules/veterinary/constants'
 import { getAnimalMilkStats }                      from '@/modules/milk/queries'
 import { getHealthEventsByAnimal }                 from '@/modules/health-events/queries'
 import { getAnimalFeedHistory }                    from '@/modules/feed/queries'
@@ -19,6 +19,15 @@ import { AnimalQuickActions, AddPhotoButton }  from '@/modules/animals/component
 import { AnimalTimeline }      from '@/modules/animals/components/animal-timeline'
 import { SectionCard, InfoRow, InfoRows } from '@/components/shared/section-card'
 import { CategoryBadge, InseminationBadge } from '@/components/shared/status-badge'
+import {
+  getAnimalOrigin,
+  getAnimalCompletenessStatus,
+  getNextActions,
+  getVetStatusLabel,
+  daysToCalving,
+  ANIMAL_ORIGIN_LABELS,
+  ANIMAL_ORIGIN_DESCRIPTIONS,
+} from '@/modules/animals/helpers'
 
 import {
   cn,
@@ -29,7 +38,11 @@ import {
   BIRTH_TYPE_LABELS,
   LOT_TYPE_LABELS,
 } from '@/lib/utils'
-import { Scale, Heart, Camera, Wheat, ClipboardList, Tag, Stethoscope, Baby, ChevronLeft, Droplets } from 'lucide-react'
+import {
+  Scale, Heart, Wheat, ClipboardList, Tag, Stethoscope,
+  Baby, ChevronLeft, Droplets, CheckCircle2, AlertTriangle,
+  Clock,
+} from 'lucide-react'
 
 // ─── Metadata dinâmica ─────────────────────────────────────
 
@@ -90,6 +103,16 @@ export default async function AnimalDetailPage({
   const lastWeight   = animal.weightRecords[0]
   const isActive     = animal.status === 'ACTIVE'
 
+  // ── Helpers de origem, completude e ações ──────────────
+  const origin      = getAnimalOrigin(animal, !!vetSnapshot)
+  const completeness = getAnimalCompletenessStatus(
+    animal,
+    animal._count.photos,
+    animal.reproductions.length > 0,
+  )
+  const nextActions  = getNextActions(animal, vetSnapshot)
+  const calvingDays  = vetSnapshot ? daysToCalving(vetSnapshot.expectedCalvingDate) : null
+
   const sexColor  = animal.sex === 'FEMALE' ? 'from-pink-500/20 to-purple-600/20' : 'from-sky-500/20 to-blue-600/20'
   const sexAccent = animal.sex === 'FEMALE' ? 'bg-pink-500' : 'bg-sky-500'
 
@@ -139,7 +162,7 @@ export default async function AnimalDetailPage({
             </div>
           )}
 
-          {/* Gradiente base → topo — mais intenso no desktop para ler o texto */}
+          {/* Gradiente base → topo */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
 
           {/* Navegação mobile — overlay dentro da foto */}
@@ -185,9 +208,11 @@ export default async function AnimalDetailPage({
               {animal.status !== 'ACTIVE' && (
                 <span className={cn(
                   'shrink-0 text-xs font-semibold rounded-full px-3 py-1',
-                  animal.status === 'SOLD' ? 'bg-amber-500/90 text-white' : 'bg-red-500/90 text-white',
+                  animal.status === 'SOLD'        ? 'bg-amber-500/90 text-white'  :
+                  animal.status === 'TRANSFERRED' ? 'bg-blue-500/90 text-white'   :
+                                                    'bg-red-500/90 text-white',
                 )}>
-                  {animal.status === 'SOLD' ? 'Vendido' : 'Óbito'}
+                  {animal.status === 'SOLD' ? 'Vendido' : animal.status === 'TRANSFERRED' ? 'Transferido' : 'Óbito'}
                 </span>
               )}
             </div>
@@ -232,9 +257,9 @@ export default async function AnimalDetailPage({
       {/* ── STATS RÁPIDAS ───────────────────────────── */}
       <div className="grid grid-cols-3 gap-2 md:gap-3">
         {[
-          { icon: Droplets, color: 'text-cyan-400', bg: 'bg-cyan-500/10', value: animal._count.milkRecords, label: 'Registros de Leite' },
-          { icon: Scale,    color: 'text-blue-400', bg: 'bg-blue-500/10',  value: animal.weightRecords.length,  label: 'Pesagens' },
-          { icon: Heart,    color: 'text-red-400',  bg: 'bg-red-500/10',   value: animal._count.healthEvents,   label: 'Eventos de Saúde' },
+          { icon: Droplets, color: 'text-cyan-400',  bg: 'bg-cyan-500/10',  value: animal._count.milkRecords,      label: 'Registros de Leite' },
+          { icon: Scale,    color: 'text-blue-400',  bg: 'bg-blue-500/10',  value: animal.weightRecords.length,    label: 'Pesagens' },
+          { icon: Heart,    color: 'text-red-400',   bg: 'bg-red-500/10',   value: animal._count.healthEvents,     label: 'Eventos de Saúde' },
         ].map(({ icon: Icon, color, bg, value, label }) => (
           <div key={label} className="rounded-xl border border-border bg-card p-3 md:p-5 flex flex-col items-center gap-1.5">
             <div className={cn('size-8 md:size-10 rounded-lg flex items-center justify-center', bg)}>
@@ -260,7 +285,185 @@ export default async function AnimalDetailPage({
         userRole={role}
       />
 
-      {/* Seção: Identificação */}
+      {/* ── SITUAÇÃO NO REBANHO ──────────────────────── */}
+      <SectionCard title="Situação no Rebanho">
+        <InfoRows>
+          {/* Status */}
+          <InfoRow
+            label="Status"
+            value={
+              <span className={cn(
+                'inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-2.5 py-0.5',
+                isActive
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                  : animal.status === 'SOLD'
+                  ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                  : animal.status === 'TRANSFERRED'
+                  ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                  : 'bg-red-500/10 text-red-600 dark:text-red-400',
+              )}>
+                {isActive ? 'Ativo'
+                  : animal.status === 'SOLD' ? 'Vendido'
+                  : animal.status === 'TRANSFERRED' ? 'Transferido'
+                  : 'Óbito'}
+              </span>
+            }
+            highlight
+          />
+
+          {/* Origem do cadastro */}
+          <InfoRow
+            label="Origem"
+            value={
+              <span
+                title={ANIMAL_ORIGIN_DESCRIPTIONS[origin]}
+                className={cn(
+                  'inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-0.5',
+                  origin === 'VETERINARY_IMPORTED'
+                    ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                    : origin === 'MIXED'
+                    ? 'bg-violet-500/10 text-violet-600 dark:text-violet-400'
+                    : 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-400',
+                )}
+              >
+                {ANIMAL_ORIGIN_LABELS[origin]}
+              </span>
+            }
+          />
+
+          {/* Código veterinário externo */}
+          {animal.externalCode && (
+            <InfoRow
+              label="Cód. veterinário"
+              value={<span className="font-mono text-sm text-primary font-semibold">{animal.externalCode}</span>}
+            />
+          )}
+
+          {/* Lote */}
+          <InfoRow
+            label="Lote"
+            value={
+              animal.lot
+                ? <span>{animal.lot.name} <span className="text-muted-foreground text-xs">· {LOT_TYPE_LABELS[animal.lot.type]}</span></span>
+                : <span className="text-muted-foreground italic">Sem lote</span>
+            }
+          />
+
+          {/* Fotos */}
+          <InfoRow
+            label="Fotos"
+            value={
+              animal._count.photos === 0
+                ? <span className="text-muted-foreground italic">Nenhuma foto</span>
+                : `${animal._count.photos} foto${animal._count.photos !== 1 ? 's' : ''}`
+            }
+          />
+
+          {/* Última atualização */}
+          {animal.updatedAt && (
+            <InfoRow
+              label="Atualizado"
+              value={<span className="text-muted-foreground">{formatDate(animal.updatedAt)}</span>}
+            />
+          )}
+        </InfoRows>
+
+        {/* Indicador de completude */}
+        {completeness.isComplete ? (
+          <div className="mt-3 pt-3 border-t border-border flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+            <CheckCircle2 className="size-4 shrink-0" />
+            <span className="font-medium">Cadastro completo</span>
+          </div>
+        ) : (
+          <div className="mt-3 pt-3 border-t border-border space-y-1.5">
+            <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="size-4 shrink-0" />
+              <span className="font-medium">Cadastro incompleto</span>
+            </div>
+            <ul className="space-y-0.5 pl-6">
+              {completeness.missing.map((item) => (
+                <li key={item} className="text-xs text-muted-foreground list-disc">{item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </SectionCard>
+
+      {/* ── PRÓXIMAS AÇÕES ───────────────────────────── */}
+      <SectionCard
+        title="Próximas Ações"
+        subtitle={
+          nextActions.length > 0
+            ? `${nextActions.length} item${nextActions.length !== 1 ? 'ns' : ''} pendente${nextActions.length !== 1 ? 's' : ''}`
+            : undefined
+        }
+      >
+        {nextActions.length === 0 ? (
+          <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+            <CheckCircle2 className="size-4 shrink-0" />
+            <span>Nenhuma ação pendente para este animal</span>
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {nextActions.map((action, i) => (
+              <div key={i} className="py-2.5 first:pt-0 last:pb-0 flex items-start gap-3">
+                <span className={cn(
+                  'shrink-0 mt-0.5 text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5',
+                  action.priority === 'HIGH'
+                    ? 'bg-red-500/10 text-red-600 dark:text-red-400'
+                    : action.priority === 'MEDIUM'
+                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                    : 'bg-zinc-500/10 text-zinc-500',
+                )}>
+                  {action.priority === 'HIGH' ? 'Alta' : action.priority === 'MEDIUM' ? 'Média' : 'Baixa'}
+                </span>
+                <div className="flex-1 min-w-0">
+                  {action.link ? (
+                    <Link href={action.link} className="text-sm font-medium text-primary hover:underline">
+                      {action.title}
+                    </Link>
+                  ) : (
+                    <p className="text-sm font-medium">{action.title}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-0.5">{action.reason}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      {/* ── FOTOS / LINHA DO TEMPO ───────────────────── */}
+      <SectionCard
+        title="Fotos"
+        subtitle={`${animal._count.photos} foto${animal._count.photos !== 1 ? 's' : ''}`}
+        action={
+          isActive ? (
+            <AddPhotoButton
+              animalId={animal.id}
+              farmId={farmId}
+              className="text-xs text-primary hover:underline"
+            />
+          ) : undefined
+        }
+        noPadding
+      >
+        <div className="p-4">
+          <AnimalTimeline
+            photos={animal.photos}
+            context={{
+              category: animal.category,
+              sex:      animal.sex,
+              lotName:  animal.lot?.name ?? null,
+            }}
+            animalTag={animal.tag}
+            farmId={farmId}
+            canDelete={['OWNER', 'MANAGER'].includes(role)}
+          />
+        </div>
+      </SectionCard>
+
+      {/* ── IDENTIFICAÇÃO ────────────────────────────── */}
       <SectionCard title="Identificação">
         <InfoRows>
           <InfoRow label="Brinco" value={<span className="font-mono text-primary font-bold">{animal.tag}</span>} highlight />
@@ -271,7 +474,7 @@ export default async function AnimalDetailPage({
             />
           )}
           {animal.birthType && (
-            <InfoRow label="Origem" value={BIRTH_TYPE_LABELS[animal.birthType] ?? animal.birthType} />
+            <InfoRow label="Tipo de nascimento" value={BIRTH_TYPE_LABELS[animal.birthType] ?? animal.birthType} />
           )}
           {lastWeight && (
             <InfoRow
@@ -288,7 +491,7 @@ export default async function AnimalDetailPage({
         </InfoRows>
       </SectionCard>
 
-      {/* Seção: Linhagem */}
+      {/* ── LINHAGEM ─────────────────────────────────── */}
       {(animal.mother || animal.father) && (
         <SectionCard title="Linhagem">
           <InfoRows>
@@ -324,7 +527,7 @@ export default async function AnimalDetailPage({
         </SectionCard>
       )}
 
-      {/* Seção: Crias */}
+      {/* ── CRIAS ────────────────────────────────────── */}
       {animal.maternalChildren.length > 0 && (
         <SectionCard
           title="Crias"
@@ -359,58 +562,7 @@ export default async function AnimalDetailPage({
         </SectionCard>
       )}
 
-      {/* Produção de Leite (vacas e novilhas fêmeas com participações) */}
-      {animal.sex === 'FEMALE' && milkStats.participationCount > 0 && (
-        <SectionCard
-          title="Produção de Leite"
-          subtitle="Estimativas por distribuição de ordenha"
-          action={
-            <Link href={`/milk/${id}`} className="text-xs text-primary hover:underline">
-              Ver histórico
-            </Link>
-          }
-        >
-          <InfoRows>
-            <InfoRow
-              label="Vitalícia"
-              value={<span className="text-cyan-400 font-bold tabular-nums">{formatLiters(milkStats.totalLifetime)}</span>}
-              highlight
-            />
-            <InfoRow label="Ano atual"       value={<span className="tabular-nums">{formatLiters(milkStats.totalCurrentYear)}</span>} />
-            <InfoRow label="Últimos 30 dias" value={<span className="tabular-nums">{formatLiters(milkStats.totalLast30Days)}</span>} />
-            <InfoRow label="Participações"   value={`${milkStats.participationCount} ordenhas`} />
-          </InfoRows>
-        </SectionCard>
-      )}
-
-      {/* Reprodução (se houver) */}
-      {animal.reproductions.length > 0 && (
-        <SectionCard
-          title="Reprodução"
-          subtitle={`${animal.reproductions.length} registros`}
-          action={
-            <Link href={`/animals/${id}/reproduction`} className="text-xs text-primary hover:underline">
-              Ver todos
-            </Link>
-          }
-        >
-          <InfoRows>
-            {animal.reproductions.slice(0, 2).map((r) => (
-              <InfoRow
-                key={r.id}
-                label={formatDate(r.date)}
-                value={
-                  <span className="text-muted-foreground">
-                    {r.bullName ?? 'Não informado'} · {r.status}
-                  </span>
-                }
-              />
-            ))}
-          </InfoRows>
-        </SectionCard>
-      )}
-
-      {/* Dados Veterinários */}
+      {/* ── DADOS VETERINÁRIOS (melhorado) ───────────── */}
       {vetSnapshot && (
         <SectionCard
           title="Dados Veterinários"
@@ -422,9 +574,12 @@ export default async function AnimalDetailPage({
           }
         >
           <div className="space-y-3">
-            {/* Grupo + data do relatório */}
+            {/* Grupo + status calculado + data */}
             <div className="flex items-center gap-2 flex-wrap">
               <VeterinaryGroupBadge group={vetSnapshot.reportGroup} />
+              <span className="text-xs font-medium text-muted-foreground bg-muted rounded-full px-2 py-0.5">
+                {getVetStatusLabel(vetSnapshot.reportGroup)}
+              </span>
               <span className="text-xs text-muted-foreground">
                 {vetSnapshot.report?.reportDate
                   ? formatDate(vetSnapshot.report.reportDate)
@@ -436,6 +591,25 @@ export default async function AnimalDetailPage({
                 </span>
               )}
             </div>
+
+            {/* Dias para parto — destaque */}
+            {calvingDays !== null && (
+              <div className={cn(
+                'flex items-center gap-2 rounded-lg px-3 py-2 text-sm',
+                calvingDays < 0
+                  ? 'bg-red-500/10 text-red-600 dark:text-red-400'
+                  : calvingDays <= 15
+                  ? 'bg-violet-500/10 text-violet-600 dark:text-violet-400'
+                  : 'bg-muted text-muted-foreground',
+              )}>
+                <Clock className="size-4 shrink-0" />
+                {calvingDays < 0
+                  ? `Parto vencido há ${Math.abs(calvingDays)} dia${Math.abs(calvingDays) !== 1 ? 's' : ''}`
+                  : calvingDays === 0
+                  ? 'Parto previsto para hoje'
+                  : `${calvingDays} dia${calvingDays !== 1 ? 's' : ''} para o parto`}
+              </div>
+            )}
 
             {/* Métricas */}
             <InfoRows>
@@ -451,8 +625,32 @@ export default async function AnimalDetailPage({
               {vetSnapshot.inseminationDate && (
                 <InfoRow label="Última IA"      value={formatDate(vetSnapshot.inseminationDate)} />
               )}
+              {vetSnapshot.inseminationNumber != null && (
+                <InfoRow
+                  label="Nº da IA"
+                  value={`${vetSnapshot.inseminationNumber}ª inseminação`}
+                />
+              )}
+              {vetSnapshot.reportDays != null && vetSnapshot.dayMeaning && vetSnapshot.dayMeaning !== 'UNKNOWN' && (
+                <InfoRow
+                  label={DAY_MEANING_LABELS[vetSnapshot.dayMeaning]}
+                  value={`${vetSnapshot.reportDays} dia${vetSnapshot.reportDays !== 1 ? 's' : ''}`}
+                />
+              )}
               {vetSnapshot.bullName && (
-                <InfoRow label="Touro"          value={vetSnapshot.bullName} />
+                <InfoRow label="Touro / Sêmen"  value={vetSnapshot.bullName} />
+              )}
+              {vetSnapshot.cScore != null && (
+                <InfoRow label="Cond. corporal (C)" value={`${vetSnapshot.cScore.toFixed(1)}`} />
+              )}
+              {vetSnapshot.tScore != null && (
+                <InfoRow label="Escore úbere (T)"   value={`${vetSnapshot.tScore.toFixed(1)}`} />
+              )}
+              {vetSnapshot.milkCurrent != null && vetSnapshot.milkCurrent > 0 && (
+                <InfoRow label="Leite atual"    value={`${vetSnapshot.milkCurrent.toFixed(1)} L`} />
+              )}
+              {vetSnapshot.milkPeak != null && vetSnapshot.milkPeak > 0 && (
+                <InfoRow label="Leite pico"     value={`${vetSnapshot.milkPeak.toFixed(1)} L`} />
               )}
               {vetSnapshot.ccsThousand != null && (
                 <InfoRow
@@ -477,7 +675,11 @@ export default async function AnimalDetailPage({
               {vetSnapshot.discardRecommendation && (
                 <InfoRow
                   label="Descarte"
-                  value={<span className="text-destructive font-semibold">Recomendado</span>}
+                  value={
+                    <span className="text-destructive font-semibold">
+                      Recomendado — {vetSnapshot.discardRecommendation}
+                    </span>
+                  }
                 />
               )}
               {vetSnapshot.occurrence && (
@@ -512,7 +714,69 @@ export default async function AnimalDetailPage({
         </SectionCard>
       )}
 
-      {/* Nutrição */}
+      {/* ── REPRODUÇÃO ───────────────────────────────── */}
+      {animal.reproductions.length > 0 && (
+        <SectionCard
+          title="Reprodução"
+          subtitle={`${animal.reproductions.length} registro${animal.reproductions.length !== 1 ? 's' : ''}`}
+          action={
+            <Link href={`/animals/${id}/reproduction`} className="text-xs text-primary hover:underline">
+              Ver todos
+            </Link>
+          }
+        >
+          <InfoRows>
+            {animal.reproductions.slice(0, 2).map((r) => (
+              <InfoRow
+                key={r.id}
+                label={formatDate(r.date)}
+                value={
+                  <span className="text-muted-foreground">
+                    {r.bullName ?? 'Não informado'} · {r.status}
+                  </span>
+                }
+              />
+            ))}
+          </InfoRows>
+        </SectionCard>
+      )}
+
+      {/* ── SAÚDE ────────────────────────────────────── */}
+      <SectionCard title="Eventos de Saúde" noPadding>
+        <div className="p-4">
+          <HealthEventTimeline
+            events={healthEvents}
+            animalId={animal.id}
+            farmId={farmId}
+            userId={session.user.id}
+          />
+        </div>
+      </SectionCard>
+
+      {/* ── NUTRIÇÃO / LEITE ─────────────────────────── */}
+      {animal.sex === 'FEMALE' && milkStats.participationCount > 0 && (
+        <SectionCard
+          title="Produção de Leite"
+          subtitle="Estimativas por distribuição de ordenha"
+          action={
+            <Link href={`/milk/${id}`} className="text-xs text-primary hover:underline">
+              Ver histórico
+            </Link>
+          }
+        >
+          <InfoRows>
+            <InfoRow
+              label="Vitalícia"
+              value={<span className="text-cyan-400 font-bold tabular-nums">{formatLiters(milkStats.totalLifetime)}</span>}
+              highlight
+            />
+            <InfoRow label="Ano atual"       value={<span className="tabular-nums">{formatLiters(milkStats.totalCurrentYear)}</span>} />
+            <InfoRow label="Últimos 30 dias" value={<span className="tabular-nums">{formatLiters(milkStats.totalLast30Days)}</span>} />
+            <InfoRow label="Participações"   value={`${milkStats.participationCount} ordenhas`} />
+          </InfoRows>
+        </SectionCard>
+      )}
+
       <SectionCard
         title="Nutrição"
         subtitle={animal.totalFeedConsumedKg > 0 ? `${animal.totalFeedConsumedKg.toFixed(1)} kg acumulado` : undefined}
@@ -533,19 +797,7 @@ export default async function AnimalDetailPage({
         </div>
       </SectionCard>
 
-      {/* Saúde */}
-      <SectionCard title="Eventos de Saúde" noPadding>
-        <div className="p-4">
-          <HealthEventTimeline
-            events={healthEvents}
-            animalId={animal.id}
-            farmId={farmId}
-            userId={session.user.id}
-          />
-        </div>
-      </SectionCard>
-
-      {/* Histórico de auditoria (OWNER / MANAGER) */}
+      {/* ── HISTÓRICO ────────────────────────────────── */}
       {canViewAudit && (
         <SectionCard
           title="Histórico"
@@ -563,36 +815,6 @@ export default async function AnimalDetailPage({
           </div>
         </SectionCard>
       )}
-
-      {/* Timeline de fotos */}
-      <SectionCard
-        title="Linha do Tempo"
-        subtitle={`${animal._count.photos} foto${animal._count.photos !== 1 ? 's' : ''}`}
-        action={
-          isActive ? (
-            <AddPhotoButton
-              animalId={animal.id}
-              farmId={farmId}
-              className="text-xs text-primary hover:underline"
-            />
-          ) : undefined
-        }
-        noPadding
-      >
-        <div className="p-4">
-          <AnimalTimeline
-            photos={animal.photos}
-            context={{
-              category: animal.category,
-              sex:      animal.sex,
-              lotName:  animal.lot?.name ?? null,
-            }}
-            animalTag={animal.tag}
-            farmId={farmId}
-            canDelete={['OWNER', 'MANAGER'].includes(role)}
-          />
-        </div>
-      </SectionCard>
 
     </div>
   )
