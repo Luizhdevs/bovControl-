@@ -275,7 +275,19 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
     }
   }
 
-  // 5. Seção alertas
+  // 5. Ordena cada seção por data mais próxima (days crescente, nulls por último)
+  const byDays = (a: ManagementActionItem, b: ManagementActionItem) =>
+    (a.days ?? Infinity) - (b.days ?? Infinity)
+
+  critical.sort(byDays)
+  calving.sort(byDays)
+  dryOff.sort(byDays)
+  reproduction.sort(byDays)
+  calves.sort(byDays)
+  registration.sort(byDays)
+  health.sort(byDays)
+
+  // 6. Seção alertas
   const alerts: ManagementActionItem[] = pendingAlerts.map((al) => ({
     id:           al.id,
     animalId:     al.animal?.id ?? '',
@@ -295,7 +307,7 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
     href:         al.animal ? `/animals/${al.animal.id}` : '/alerts',
   }))
 
-  // 6. Resumo
+  // 7. Resumo
   const allUnique = new Set([
     ...critical.map((i) => i.id),
     ...calving.map((i) => i.id),
@@ -325,6 +337,7 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
     pendingAlerts:       alerts.length,
   }
 
+  // 8. Seções
   const sections: ManagementSections = {
     critical, calving, dryOff, reproduction, calves, registration, health, alerts,
   }
