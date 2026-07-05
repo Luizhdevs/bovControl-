@@ -8,7 +8,8 @@ import { requireFarmAccess } from '@/lib/permissions'
 import { generateAnimalTag } from '@/modules/animals/queries'
 import { incrementStorageCounters, decrementStorageCounters } from '@/lib/storage-limits'
 import { deleteFile } from '@/lib/storage/provider'
-import { auditCreate, auditUpdate, auditDelete, auditDeactivate } from '@/lib/audit'
+import { auditCreate, auditUpdate, auditDelete, auditDeactivate, auditLog } from '@/lib/audit'
+import { getActiveFarm } from '@/lib/active-farm'
 
 // Regras de domínio compartilhadas — NENHUMA regra de negócio é definida aqui
 import {
@@ -25,6 +26,10 @@ import {
   transferLotSchema,
   addPhotoSchema,
   addWeightSchema,
+  markAnimalAsSoldSchema,
+  markAnimalAsDeadSchema,
+  markAnimalAsTransferredSchema,
+  reactivateAnimalSchema,
 } from './schema'
 import type { ActionResult } from './types'
 
@@ -531,5 +536,259 @@ export async function deactivateAnimal(
   } catch (error) {
     console.error('[deactivateAnimal]', error)
     return { success: false, error: 'Erro ao inativar animal.' }
+  }
+}
+
+// ─── Registrar como Vendido ────────────────────────────────
+
+export async function markAnimalAsSold(rawData: unknown): Promise<ActionResult<void>> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado' }
+
+    const parsed = markAnimalAsSoldSchema.safeParse(rawData)
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.errors[0]!.message }
+    }
+
+    const activeFarm = await getActiveFarm(session.user.id)
+    if (!activeFarm) return { success: false, error: 'Fazenda não encontrada' }
+    const { farmId } = activeFarm
+
+    await requireFarmAccess(session.user.id, farmId, 'MANAGER')
+
+    const animal = await prisma.animal.findFirst({
+      where:  { id: parsed.data.animalId, farmId },
+      select: { id: true, sex: true, category: true, status: true, birthType: true, tag: true },
+    })
+    if (!animal) return { success: false, error: 'Animal não encontrado' }
+    if (animal.status !== 'ACTIVE') return { success: false, error: 'Animal não está ativo' }
+
+    const guard = canSendToSlaughter(animal)
+    if (!guard.allowed) return { success: false, error: guard.reason }
+
+    const exitReason = parsed.data.buyer
+      ? `Vendido para: ${parsed.data.buyer}`
+      : 'Vendido'
+
+    await prisma.animal.update({
+      where: { id: parsed.data.animalId },
+      data:  { status: 'SOLD', exitDate: parsed.data.exitDate, exitReason },
+    })
+
+    auditDeactivate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Animal',
+      entityId: parsed.data.animalId,
+      before:   { status: 'ACTIVE' },
+      after:    { status: 'SOLD', exitDate: parsed.data.exitDate.toISOString() },
+      metadata: {
+        event:     'ANIMAL_MARKED_AS_SOLD',
+        tag:       animal.tag,
+        exitDate:  parsed.data.exitDate.toISOString(),
+        saleValue: parsed.data.saleValue ?? null,
+        buyer:     parsed.data.buyer ?? null,
+        notes:     parsed.data.notes ?? null,
+      },
+    })
+
+    revalidatePath('/animals')
+    revalidatePath(`/animals/${parsed.data.animalId}`)
+    revalidatePath('/management/today')
+
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[markAnimalAsSold]', error)
+    return { success: false, error: 'Erro ao registrar venda. Tente novamente.' }
+  }
+}
+
+// ─── Registrar Óbito ───────────────────────────────────────
+
+export async function markAnimalAsDead(rawData: unknown): Promise<ActionResult<void>> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado' }
+
+    const parsed = markAnimalAsDeadSchema.safeParse(rawData)
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.errors[0]!.message }
+    }
+
+    const activeFarm = await getActiveFarm(session.user.id)
+    if (!activeFarm) return { success: false, error: 'Fazenda não encontrada' }
+    const { farmId } = activeFarm
+
+    await requireFarmAccess(session.user.id, farmId, 'MANAGER')
+
+    const animal = await prisma.animal.findFirst({
+      where:  { id: parsed.data.animalId, farmId },
+      select: { id: true, status: true, tag: true },
+    })
+    if (!animal) return { success: false, error: 'Animal não encontrado' }
+    if (animal.status !== 'ACTIVE') return { success: false, error: 'Animal não está ativo' }
+
+    const exitReason = parsed.data.cause
+      ? `Óbito: ${parsed.data.cause}`
+      : 'Óbito registrado'
+
+    await prisma.animal.update({
+      where: { id: parsed.data.animalId },
+      data:  { status: 'DEAD', exitDate: parsed.data.exitDate, exitReason },
+    })
+
+    auditDeactivate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Animal',
+      entityId: parsed.data.animalId,
+      before:   { status: 'ACTIVE' },
+      after:    { status: 'DEAD', exitDate: parsed.data.exitDate.toISOString() },
+      metadata: {
+        event:    'ANIMAL_MARKED_AS_DEAD',
+        tag:      animal.tag,
+        exitDate: parsed.data.exitDate.toISOString(),
+        cause:    parsed.data.cause ?? null,
+      },
+    })
+
+    revalidatePath('/animals')
+    revalidatePath(`/animals/${parsed.data.animalId}`)
+    revalidatePath('/management/today')
+
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[markAnimalAsDead]', error)
+    return { success: false, error: 'Erro ao registrar óbito. Tente novamente.' }
+  }
+}
+
+// ─── Registrar Transferência ───────────────────────────────
+
+export async function markAnimalAsTransferred(rawData: unknown): Promise<ActionResult<void>> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado' }
+
+    const parsed = markAnimalAsTransferredSchema.safeParse(rawData)
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.errors[0]!.message }
+    }
+
+    const activeFarm = await getActiveFarm(session.user.id)
+    if (!activeFarm) return { success: false, error: 'Fazenda não encontrada' }
+    const { farmId } = activeFarm
+
+    await requireFarmAccess(session.user.id, farmId, 'MANAGER')
+
+    const animal = await prisma.animal.findFirst({
+      where:  { id: parsed.data.animalId, farmId },
+      select: { id: true, status: true, tag: true },
+    })
+    if (!animal) return { success: false, error: 'Animal não encontrado' }
+    if (animal.status !== 'ACTIVE') return { success: false, error: 'Animal não está ativo' }
+
+    const exitReason = parsed.data.destination
+      ? `Transferido para: ${parsed.data.destination}`
+      : 'Transferido'
+
+    await prisma.animal.update({
+      where: { id: parsed.data.animalId },
+      data:  { status: 'TRANSFERRED', exitDate: parsed.data.exitDate, exitReason },
+    })
+
+    auditDeactivate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Animal',
+      entityId: parsed.data.animalId,
+      before:   { status: 'ACTIVE' },
+      after:    { status: 'TRANSFERRED', exitDate: parsed.data.exitDate.toISOString() },
+      metadata: {
+        event:       'ANIMAL_MARKED_AS_TRANSFERRED',
+        tag:         animal.tag,
+        exitDate:    parsed.data.exitDate.toISOString(),
+        destination: parsed.data.destination ?? null,
+      },
+    })
+
+    revalidatePath('/animals')
+    revalidatePath(`/animals/${parsed.data.animalId}`)
+    revalidatePath('/management/today')
+
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[markAnimalAsTransferred]', error)
+    return { success: false, error: 'Erro ao registrar transferência. Tente novamente.' }
+  }
+}
+
+// ─── Reativar Animal ───────────────────────────────────────
+
+export async function reactivateAnimal(rawData: unknown): Promise<ActionResult<void>> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado' }
+
+    const parsed = reactivateAnimalSchema.safeParse(rawData)
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.errors[0]!.message }
+    }
+
+    const activeFarm = await getActiveFarm(session.user.id)
+    if (!activeFarm) return { success: false, error: 'Fazenda não encontrada' }
+    const { farmId, role } = activeFarm
+
+    await requireFarmAccess(session.user.id, farmId, 'MANAGER')
+
+    const animal = await prisma.animal.findFirst({
+      where:  { id: parsed.data.animalId, farmId },
+      select: { id: true, status: true, tag: true, exitDate: true, exitReason: true },
+    })
+    if (!animal) return { success: false, error: 'Animal não encontrado' }
+    if (animal.status === 'ACTIVE') return { success: false, error: 'Animal já está ativo' }
+
+    // Óbito: somente OWNER pode reativar
+    if (animal.status === 'DEAD' && role !== 'OWNER') {
+      return { success: false, error: 'Apenas o proprietário pode reativar animais com óbito registrado' }
+    }
+
+    const prevStatus     = animal.status
+    const prevExitDate   = animal.exitDate
+    const prevExitReason = animal.exitReason
+
+    await prisma.animal.update({
+      where: { id: parsed.data.animalId },
+      data:  { status: 'ACTIVE', exitDate: null, exitReason: null },
+    })
+
+    auditLog({
+      farmId,
+      userId:   session.user.id,
+      action:   'ACTIVATE',
+      entity:   'Animal',
+      entityId: parsed.data.animalId,
+      before:   {
+        status:     prevStatus,
+        exitDate:   prevExitDate?.toISOString() ?? null,
+        exitReason: prevExitReason,
+      },
+      after:    { status: 'ACTIVE', exitDate: null, exitReason: null },
+      metadata: {
+        event:          'ANIMAL_REACTIVATED',
+        tag:            animal.tag,
+        previousStatus: prevStatus,
+      },
+    })
+
+    revalidatePath('/animals')
+    revalidatePath(`/animals/${parsed.data.animalId}`)
+    revalidatePath('/management/today')
+
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[reactivateAnimal]', error)
+    return { success: false, error: 'Erro ao reativar animal. Tente novamente.' }
   }
 }

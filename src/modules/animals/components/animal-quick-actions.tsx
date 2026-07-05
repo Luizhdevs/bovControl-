@@ -1,7 +1,6 @@
 'use client'
 
-import React, { useTransition, useState, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useTransition, useState, useRef } from 'react'
 import { useToast }  from '@/hooks/use-toast'
 import { Button }   from '@/components/ui/button'
 import { Input }    from '@/components/ui/input'
@@ -27,8 +26,11 @@ import {
   transferAnimalToLot,
   addWeightRecord,
   addAnimalPhoto,
-  deactivateAnimal,
 } from '../actions'
+import {
+  AnimalStatusActionsSheets,
+  type StatusChangeType,
+} from './animal-status-actions'
 import { registerMilkRecord } from '@/modules/milk/actions'
 import { getAnimalOperationGuards } from '@/modules/shared/domain/animal-rules'
 import { LOT_TYPE_LABELS, MILK_SHIFT_LABELS } from '@/modules/shared/domain/animal-labels'
@@ -52,7 +54,7 @@ import type { LotSelectOption } from '../types'
 
 // ─── Tipos ─────────────────────────────────────────────────
 
-type SheetType = 'lot' | 'weight' | 'milk' | 'photo' | 'more' | null
+type SheetType = 'lot' | 'weight' | 'milk' | 'photo' | 'more' | StatusChangeType
 
 interface AnimalQuickActionsProps {
   animalId:    string
@@ -543,10 +545,7 @@ export function AnimalQuickActions({
   lots,
   userRole,
 }: AnimalQuickActionsProps) {
-  const router            = useRouter()
-  const { toast }         = useToast()
   const [openSheet, setOpenSheet] = useState<SheetType>(null)
-  const [isPending, start] = useTransition()
 
   const animal = {
     sex:       animalSex,
@@ -609,18 +608,10 @@ export function AnimalQuickActions({
     },
   ]
 
-  // Ações do rodapé
-  async function handleDeactivate(status: 'SOLD' | 'DEAD') {
-    start(async () => {
-      const result = await deactivateAnimal(animalId, farmId, status)
-      if (!result.success) {
-        toast({ title: 'Erro', description: result.error, variant: 'destructive' })
-        return
-      }
-      toast({ title: status === 'SOLD' ? 'Registrado como vendido.' : 'Óbito registrado.' })
-      router.push('/animals')
-    })
-  }
+  const statusChangeType: StatusChangeType =
+    openSheet === 'sold' || openSheet === 'dead' || openSheet === 'transferred'
+      ? openSheet
+      : null
 
   return (
     <>
@@ -692,7 +683,7 @@ export function AnimalQuickActions({
         onClose={() => setOpenSheet(null)}
       />
 
-      {/* Sheet: Mais ações (Vendido / Óbito) */}
+      {/* Sheet: Mais ações */}
       {canManage && (
         <Sheet open={openSheet === 'more'} onOpenChange={(v) => !v && setOpenSheet(null)}>
           <SheetContent side="bottom" className="rounded-t-2xl pb-8">
@@ -705,8 +696,8 @@ export function AnimalQuickActions({
             <div className="space-y-3">
               <button
                 type="button"
-                disabled={!guards.slaughter.allowed || isPending}
-                onClick={() => { setOpenSheet(null); handleDeactivate('SOLD') }}
+                disabled={!guards.slaughter.allowed}
+                onClick={() => setOpenSheet('sold')}
                 className={cn(
                   'w-full flex items-center gap-3 rounded-xl border px-4 py-3.5 text-sm font-medium transition-colors',
                   guards.slaughter.allowed
@@ -727,8 +718,21 @@ export function AnimalQuickActions({
 
               <button
                 type="button"
-                disabled={isPending}
-                onClick={() => { setOpenSheet(null); handleDeactivate('DEAD') }}
+                onClick={() => setOpenSheet('transferred')}
+                className="w-full flex items-center gap-3 rounded-xl border border-blue-500/30 bg-blue-500/5 px-4 py-3.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 transition-colors"
+              >
+                <div className="size-9 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+                  <ArrowLeftRight className="size-4 text-blue-500" />
+                </div>
+                <div className="text-left">
+                  <p className="font-semibold">Registrar Transferência</p>
+                  <p className="text-xs text-blue-500/70 mt-0.5">Para outra fazenda ou proprietário</p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setOpenSheet('dead')}
                 className="w-full flex items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3.5 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
               >
                 <div className="size-9 rounded-lg bg-destructive/10 flex items-center justify-center shrink-0">
@@ -736,12 +740,21 @@ export function AnimalQuickActions({
                 </div>
                 <div className="text-left">
                   <p className="font-semibold">Registrar Óbito</p>
-                  <p className="text-xs text-destructive/70 mt-0.5">Esta ação não pode ser desfeita</p>
+                  <p className="text-xs text-destructive/70 mt-0.5">Registre a data e a causa mortis</p>
                 </div>
               </button>
             </div>
           </SheetContent>
         </Sheet>
+      )}
+
+      {/* Sheets de mudança de status — Vendido / Óbito / Transferência */}
+      {canManage && (
+        <AnimalStatusActionsSheets
+          animalId={animalId}
+          openType={statusChangeType}
+          onClose={() => setOpenSheet(null)}
+        />
       )}
     </>
   )

@@ -118,3 +118,43 @@ export const animalFiltersSchema = z.object({
 })
 
 export type AnimalFiltersInput = z.infer<typeof animalFiltersSchema>
+
+// ─── Registrar como Vendido ────────────────────────────────
+
+export const markAnimalAsSoldSchema = z.object({
+  animalId:  z.string().cuid('ID inválido'),
+  exitDate:  z.coerce.date({ required_error: 'Informe a data de saída' }),
+  saleValue: z.number().positive('Valor deve ser positivo').optional(),
+  buyer:     z.string().trim().max(100).optional(),
+  notes:     z.string().trim().max(300).optional(),
+})
+
+export type MarkAnimalAsSoldInput = z.infer<typeof markAnimalAsSoldSchema>
+
+// ─── Registrar Óbito ───────────────────────────────────────
+
+export const markAnimalAsDeadSchema = z.object({
+  animalId: z.string().cuid('ID inválido'),
+  exitDate: z.coerce.date({ required_error: 'Informe a data do óbito' }),
+  cause:    z.string().trim().max(200).optional(),
+})
+
+export type MarkAnimalAsDeadInput = z.infer<typeof markAnimalAsDeadSchema>
+
+// ─── Registrar Transferência ───────────────────────────────
+
+export const markAnimalAsTransferredSchema = z.object({
+  animalId:    z.string().cuid('ID inválido'),
+  exitDate:    z.coerce.date({ required_error: 'Informe a data de transferência' }),
+  destination: z.string().trim().max(100).optional(),
+})
+
+export type MarkAnimalAsTransferredInput = z.infer<typeof markAnimalAsTransferredSchema>
+
+// ─── Reativar Animal ───────────────────────────────────────
+
+export const reactivateAnimalSchema = z.object({
+  animalId: z.string().cuid('ID inválido'),
+})
+
+export type ReactivateAnimalInput = z.infer<typeof reactivateAnimalSchema>

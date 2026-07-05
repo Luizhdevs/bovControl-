@@ -16,6 +16,7 @@ import { AuditTimeline }                           from '@/modules/audit/compone
 import { AnimalFeedSection }                       from '@/modules/feed/components/animal-feed-section'
 import { HealthEventTimeline }                     from '@/modules/health-events/components/health-event-timeline'
 import { AnimalQuickActions, AddPhotoButton }  from '@/modules/animals/components/animal-quick-actions'
+import { ReactivateAnimalButton }              from '@/modules/animals/components/animal-status-actions'
 import { AnimalTimeline }      from '@/modules/animals/components/animal-timeline'
 import { SectionCard, InfoRow, InfoRows } from '@/components/shared/section-card'
 import { CategoryBadge, InseminationBadge } from '@/components/shared/status-badge'
@@ -359,6 +360,20 @@ export default async function AnimalDetailPage({
             }
           />
 
+          {/* Data / motivo de saída — apenas para não-ativos */}
+          {!isActive && animal.exitDate && (
+            <InfoRow
+              label="Data de saída"
+              value={<span className="text-muted-foreground">{formatDate(animal.exitDate)}</span>}
+            />
+          )}
+          {!isActive && animal.exitReason && (
+            <InfoRow
+              label="Motivo"
+              value={<span className="text-muted-foreground">{animal.exitReason}</span>}
+            />
+          )}
+
           {/* Última atualização */}
           {animal.updatedAt && (
             <InfoRow
@@ -385,6 +400,16 @@ export default async function AnimalDetailPage({
                 <li key={item} className="text-xs text-muted-foreground list-disc">{item}</li>
               ))}
             </ul>
+          </div>
+        )}
+        {/* Botão de reativação — apenas para não-ativos com permissão */}
+        {!isActive && (
+          <div className="mt-3 pt-3 border-t border-border">
+            <ReactivateAnimalButton
+              animalId={animal.id}
+              animalStatus={animal.status as 'SOLD' | 'DEAD' | 'TRANSFERRED'}
+              userRole={role}
+            />
           </div>
         )}
       </SectionCard>
