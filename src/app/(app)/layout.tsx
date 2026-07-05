@@ -22,6 +22,7 @@ import {
   ClipboardList,
   Tag,
   Stethoscope,
+  ListChecks,
 } from 'lucide-react'
 import { cn }             from '@/lib/utils'
 import { SignOutButton }  from '@/components/shared/sign-out-button'
@@ -40,8 +41,9 @@ const NAV_ITEMS = [
   { href: '/pastures',       icon: MapPin,          label: 'Pastos'     },
   { href: '/feed-types',     icon: Wheat,           label: 'Rações'     },
   { href: '/ear-tags',       icon: Tag,             label: 'Etiquetas'  },
-  { href: '/veterinary', icon: Stethoscope, label: 'Veterinário' },
-  { href: '/alerts',         icon: Bell,            label: 'Alertas', hasBadge: true },
+  { href: '/veterinary',        icon: Stethoscope, label: 'Veterinário' },
+  { href: '/management/today', icon: ListChecks,  label: 'Manejo'     },
+  { href: '/alerts',           icon: Bell,        label: 'Alertas', hasBadge: true },
   { href: '/settings',       icon: Settings,        label: 'Config.'    },
 ] as const
 

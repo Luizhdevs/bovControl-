@@ -5,7 +5,7 @@ import Link         from 'next/link'
 import {
   MoreHorizontal, X,
   LayoutDashboard, PawPrint, MilkIcon, Wheat, Activity,
-  Heart, Layers2, MapPin, Bell, Settings, ClipboardList,
+  Heart, Layers2, MapPin, Bell, Settings, ClipboardList, ListChecks,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -26,8 +26,9 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/lots',          icon: Layers2,         label: 'Lotes'      },
   { href: '/pastures',      icon: MapPin,          label: 'Pastos'     },
   { href: '/feed-types',    icon: Wheat,           label: 'Rações'     },
-  { href: '/alerts',        icon: Bell,            label: 'Alertas',   hasBadge: true },
-  { href: '/settings',      icon: Settings,        label: 'Config.'    },
+  { href: '/management/today', icon: ListChecks, label: 'Manejo'    },
+  { href: '/alerts',           icon: Bell,       label: 'Alertas',  hasBadge: true },
+  { href: '/settings',         icon: Settings,   label: 'Config.'   },
 ]
 
 interface MobileNavProps {

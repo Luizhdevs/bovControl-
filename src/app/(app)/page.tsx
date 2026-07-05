@@ -6,6 +6,7 @@ import { getDashboardMilkData, getWeeklyProduction } from '@/modules/milk/querie
 import { getDashboardFeedData } from '@/modules/feed/queries'
 import { getPendingAlertCount } from '@/modules/alerts/queries'
 import { getPregnantAnimals }   from '@/modules/reproduction/queries'
+import { getTodayManagementOverview } from '@/modules/management/queries'
 import { PageHeader }           from '@/components/shared/page-header'
 import { formatLiters, formatCurrency } from '@/lib/utils'
 import {
@@ -22,6 +23,9 @@ import {
   Activity,
   BarChart3,
   Wheat,
+  ListChecks,
+  ChevronRight,
+  AlertTriangle,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -95,6 +99,7 @@ export default async function DashboardPage() {
     pregnantAnimals,
     recentCount,
     weeklyProduction,
+    managementOverview,
   ] = await Promise.all([
     getAnimalStats(farmId),
     getDashboardMilkData(farmId),
@@ -103,6 +108,7 @@ export default async function DashboardPage() {
     getPregnantAnimals(farmId, 3),
     getRecentAnimalsCount(farmId, 7),
     getWeeklyProduction(farmId),
+    getTodayManagementOverview(farmId),
   ])
 
   const kpis = [
@@ -141,6 +147,37 @@ export default async function DashboardPage() {
           </Link>
         ))}
       </div>
+
+      {/* ── Manejo de Hoje ────────────────────────────────── */}
+      <Link
+        href="/management/today"
+        className="rounded-xl border border-border bg-card p-4 flex items-center gap-3 hover:border-primary/30 transition-colors"
+      >
+        <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+          <ListChecks className="size-5 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm">Manejo de Hoje</p>
+          <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+            {managementOverview.summary.highPriority > 0 && (
+              <span className="flex items-center gap-1 text-red-500">
+                <AlertTriangle className="size-3" />
+                {managementOverview.summary.highPriority} críticas
+              </span>
+            )}
+            {managementOverview.summary.closeToCalving > 0 && (
+              <span>{managementOverview.summary.closeToCalving} partos</span>
+            )}
+            {managementOverview.summary.dueToDryOff > 0 && (
+              <span>{managementOverview.summary.dueToDryOff} secar</span>
+            )}
+            {managementOverview.summary.totalActions === 0 && (
+              <span className="text-emerald-500">Tudo em dia</span>
+            )}
+          </div>
+        </div>
+        <ChevronRight className="size-4 text-muted-foreground shrink-0" />
+      </Link>
 
       {/* ── Produção de Leite ──────────────────────────────── */}
       <div className="rounded-xl border border-border bg-card p-4 space-y-3">

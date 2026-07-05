@@ -2,7 +2,7 @@ import { auth }           from '@/lib/auth'
 import { redirect }        from 'next/navigation'
 import { getActiveFarm }   from '@/lib/active-farm'
 import Link                from 'next/link'
-import { Stethoscope, AlertTriangle, ChevronRight, Plus, Calendar, Baby, Droplets } from 'lucide-react'
+import { Stethoscope, AlertTriangle, ChevronRight, Plus, Calendar, Baby, Droplets, ListChecks } from 'lucide-react'
 import {
   getVeterinaryDashboardStats,
   getVeterinaryAttentionList,
@@ -69,6 +69,16 @@ export default async function VeterinaryDashboardPage() {
           ) : undefined
         }
       />
+
+      {/* Link para Manejo de Hoje */}
+      <Link
+        href="/management/today"
+        className="rounded-xl border border-border bg-card p-3 flex items-center gap-2 hover:border-primary/30 transition-colors"
+      >
+        <ListChecks className="size-4 text-primary shrink-0" />
+        <span className="flex-1 text-sm font-medium">Ver Manejo de Hoje</span>
+        <ChevronRight className="size-4 text-muted-foreground shrink-0" />
+      </Link>
 
       {/* Relatório pendente */}
       {pendingReport && isManager && (
