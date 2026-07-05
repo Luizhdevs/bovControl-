@@ -2,11 +2,13 @@ import { auth }           from '@/lib/auth'
 import { redirect }        from 'next/navigation'
 import { getActiveFarm }   from '@/lib/active-farm'
 import Link                from 'next/link'
-import { Stethoscope, AlertTriangle, ChevronRight, Plus, Calendar } from 'lucide-react'
+import { Stethoscope, AlertTriangle, ChevronRight, Plus, Calendar, Baby, Droplets } from 'lucide-react'
 import {
   getVeterinaryDashboardStats,
   getVeterinaryAttentionList,
   getPendingVeterinaryReport,
+  getCowsCloseToCalving,
+  getCowsDueToDryOff,
 } from '@/modules/veterinary/queries'
 import { VeterinaryGroupBadge }  from '@/modules/veterinary/components/veterinary-group-badge'
 import { VeterinaryStatusBadge } from '@/modules/veterinary/components/veterinary-status-badge'
@@ -37,10 +39,12 @@ export default async function VeterinaryDashboardPage() {
 
   const isManager = ['OWNER', 'MANAGER'].includes(role)
 
-  const [stats, attentionList, pendingReport] = await Promise.all([
+  const [stats, attentionList, pendingReport, closeUpCows, toDryCows] = await Promise.all([
     getVeterinaryDashboardStats(farmId),
     getVeterinaryAttentionList(farmId),
     getPendingVeterinaryReport(farmId),
+    getCowsCloseToCalving(farmId, 10),
+    getCowsDueToDryOff(farmId, 10),
   ])
 
   const totalAlerts = ALERT_CARD_CONFIGS.reduce(
@@ -175,6 +179,98 @@ export default async function VeterinaryDashboardPage() {
               </div>
             </div>
           </div>
+
+          {/* Parto próximo (CLOSE_UP) */}
+          {closeUpCows.length > 0 && (
+            <SectionCard
+              title="Parto Próximo"
+              subtitle={`${closeUpCows.length} amojada${closeUpCows.length !== 1 ? 's' : ''}`}
+              action={
+                <span className="flex items-center gap-1 text-violet-500">
+                  <Baby className="size-3.5" />
+                </span>
+              }
+            >
+              <div className="divide-y divide-border">
+                {closeUpCows.map((snap) => (
+                  <div key={snap.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                    <div className="flex-1 min-w-0">
+                      {snap.animal && (
+                        <Link
+                          href={`/animals/${snap.animal.id}`}
+                          className="font-mono text-sm font-bold text-primary hover:underline"
+                        >
+                          {snap.animal.tag}
+                        </Link>
+                      )}
+                      {snap.animal?.name && (
+                        <span className="ml-2 text-xs text-muted-foreground">{snap.animal.name}</span>
+                      )}
+                      {snap.animal?.lot?.name && (
+                        <span className="ml-2 text-xs text-muted-foreground/60">· {snap.animal.lot.name}</span>
+                      )}
+                    </div>
+                    {snap.expectedCalvingDate && (
+                      <span className="text-xs text-violet-500 whitespace-nowrap tabular-nums">
+                        {formatDate(snap.expectedCalvingDate)}
+                      </span>
+                    )}
+                    {snap.animal && (
+                      <Link href={`/animals/${snap.animal.id}`} className="text-muted-foreground hover:text-foreground shrink-0">
+                        <ChevronRight className="size-4" />
+                      </Link>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+          )}
+
+          {/* A secar (TO_DRY) */}
+          {toDryCows.length > 0 && (
+            <SectionCard
+              title="A Secar"
+              subtitle={`${toDryCows.length} vaca${toDryCows.length !== 1 ? 's' : ''} a secar`}
+              action={
+                <span className="flex items-center gap-1 text-amber-500">
+                  <Droplets className="size-3.5" />
+                </span>
+              }
+            >
+              <div className="divide-y divide-border">
+                {toDryCows.map((snap) => (
+                  <div key={snap.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                    <div className="flex-1 min-w-0">
+                      {snap.animal && (
+                        <Link
+                          href={`/animals/${snap.animal.id}`}
+                          className="font-mono text-sm font-bold text-primary hover:underline"
+                        >
+                          {snap.animal.tag}
+                        </Link>
+                      )}
+                      {snap.animal?.name && (
+                        <span className="ml-2 text-xs text-muted-foreground">{snap.animal.name}</span>
+                      )}
+                      {snap.animal?.lot?.name && (
+                        <span className="ml-2 text-xs text-muted-foreground/60">· {snap.animal.lot.name}</span>
+                      )}
+                    </div>
+                    {snap.expectedCalvingDate && (
+                      <span className="text-xs text-amber-500 whitespace-nowrap tabular-nums">
+                        Prev: {formatDate(snap.expectedCalvingDate)}
+                      </span>
+                    )}
+                    {snap.animal && (
+                      <Link href={`/animals/${snap.animal.id}`} className="text-muted-foreground hover:text-foreground shrink-0">
+                        <ChevronRight className="size-4" />
+                      </Link>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+          )}
 
           {/* Distribuição por grupo no relatório */}
           {Object.values(stats.groupCounts).some((c) => c > 0) && (

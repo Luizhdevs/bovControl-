@@ -31,7 +31,7 @@ function buildAnimalWhere(
     ...(sex      && { sex }),
     ...(category && { category }),
     ...(purpose  && { purpose }),
-    ...(lotId    && { lotId }),
+    ...(lotId === 'none' ? { lotId: null } : lotId ? { lotId } : {}),
     ...(search   && {
       OR: [
         { tag:  { contains: search, mode: 'insensitive' as const } },

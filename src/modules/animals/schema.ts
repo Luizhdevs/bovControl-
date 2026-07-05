@@ -114,7 +114,7 @@ export const animalFiltersSchema = z.object({
   category: z.enum(['CALF', 'HEIFER', 'COW', 'BULL', 'STEER']).optional(),
   status:   z.enum(['ACTIVE', 'SOLD', 'DEAD', 'TRANSFERRED']).default('ACTIVE'),
   purpose:  z.enum(['DAIRY', 'BEEF', 'BOTH']).optional(),
-  lotId:    z.string().optional(),
+  lotId:    z.string().optional(), // 'none' = animais sem lote
 })
 
 export type AnimalFiltersInput = z.infer<typeof animalFiltersSchema>

@@ -25,9 +25,10 @@ const CATEGORY_OPTIONS = [
 ]
 
 const STATUS_OPTIONS = [
-  { label: 'Ativas',     value: 'ACTIVE' },
-  { label: 'Vendidas',   value: 'SOLD' },
-  { label: 'Mortas',     value: 'DEAD' },
+  { label: 'Ativas',       value: 'ACTIVE' },
+  { label: 'Vendidas',     value: 'SOLD' },
+  { label: 'Mortas',       value: 'DEAD' },
+  { label: 'Transferidas', value: 'TRANSFERRED' },
 ]
 
 // ─── Pill de filtro ────────────────────────────────────────
@@ -91,7 +92,12 @@ function FilterGroup({ label, options, param, current, onFilter }: FilterGroupPr
 
 // ─── Componente principal ──────────────────────────────────
 
-export function AnimalFilters() {
+interface LotOption {
+  id:   string
+  name: string
+}
+
+export function AnimalFilters({ lots = [] }: { lots?: LotOption[] }) {
   const router     = useRouter()
   const pathname   = usePathname()
   const params     = useSearchParams()
@@ -102,6 +108,7 @@ export function AnimalFilters() {
   const sex      = params.get('sex')      ?? ''
   const category = params.get('category') ?? ''
   const status   = params.get('status')   ?? 'ACTIVE'
+  const lotId    = params.get('lotId')    ?? ''
 
   const updateFilter = useCallback(
     (key: string, value: string) => {
@@ -168,6 +175,19 @@ export function AnimalFilters() {
           current={status}
           onFilter={updateFilter}
         />
+        {lots.length > 0 && (
+          <FilterGroup
+            label="Lote"
+            options={[
+              { label: 'Todos', value: '' },
+              { label: 'Sem lote', value: 'none' },
+              ...lots.map(l => ({ label: l.name, value: l.id })),
+            ]}
+            param="lotId"
+            current={lotId}
+            onFilter={updateFilter}
+          />
+        )}
       </div>
     </div>
   )

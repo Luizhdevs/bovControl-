@@ -561,6 +561,72 @@ export async function buildCreateAnimalsFromVeterinarySnapshotsPreview(
   return { animalsToCreate, conflictCount, createCount, snapshotsToLink, warnings }
 }
 
+// ─── Etapa 9: Vacas próximas ao parto ────────────────────
+// Retorna snapshots CLOSE_UP do relatório mais recente, ordenados por data prevista.
+// Somente leitura — não modifica nenhum dado.
+
+export async function getCowsCloseToCalving(
+  farmId: string,
+  limit  = 20,
+) {
+  const latestReport = await prisma.veterinaryReport.findFirst({
+    where:   { farmId, importStatus: { in: ['IMPORTED', 'PARTIALLY_IMPORTED'] } },
+    orderBy: { reportDate: 'desc' },
+    select:  { id: true, reportDate: true },
+  })
+  if (!latestReport) return []
+
+  return prisma.veterinaryAnimalSnapshot.findMany({
+    where: {
+      reportId:    latestReport.id,
+      farmId,
+      reportGroup: 'CLOSE_UP',
+      animalId:    { not: null },
+    },
+    include: {
+      animal: { select: { id: true, tag: true, name: true, lotId: true, lot: { select: { name: true } } } },
+    },
+    orderBy: [
+      { expectedCalvingDate: 'asc' },
+      { animalName:          'asc' },
+    ],
+    take: limit,
+  })
+}
+
+// ─── Etapa 10: Vacas a secar ──────────────────────────────
+// Retorna snapshots TO_DRY do relatório mais recente.
+// Somente leitura — não modifica nenhum dado.
+
+export async function getCowsDueToDryOff(
+  farmId: string,
+  limit  = 20,
+) {
+  const latestReport = await prisma.veterinaryReport.findFirst({
+    where:   { farmId, importStatus: { in: ['IMPORTED', 'PARTIALLY_IMPORTED'] } },
+    orderBy: { reportDate: 'desc' },
+    select:  { id: true, reportDate: true },
+  })
+  if (!latestReport) return []
+
+  return prisma.veterinaryAnimalSnapshot.findMany({
+    where: {
+      reportId:    latestReport.id,
+      farmId,
+      reportGroup: 'TO_DRY',
+      animalId:    { not: null },
+    },
+    include: {
+      animal: { select: { id: true, tag: true, name: true, lotId: true, lot: { select: { name: true } } } },
+    },
+    orderBy: [
+      { expectedCalvingDate: 'asc' },
+      { animalName:          'asc' },
+    ],
+    take: limit,
+  })
+}
+
 // Importa o tipo diretamente do Prisma para uso no retorno da última função
 import type { VeterinaryAnimalSnapshot } from '@prisma/client'
 

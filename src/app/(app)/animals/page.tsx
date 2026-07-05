@@ -116,9 +116,11 @@ function AnimalPagination({
 async function AnimalListAsync({
   farmId,
   searchParams,
+  lots,
 }: {
   farmId:       string
   searchParams: Record<string, string>
+  lots:         Awaited<ReturnType<typeof getLotsForSelect>>
 }) {
   const filters = animalFiltersSchema.parse({
     search:   searchParams['search'],
@@ -130,10 +132,7 @@ async function AnimalListAsync({
   })
 
   const page = Math.max(1, parseInt(searchParams['page'] ?? '1', 10) || 1)
-  const [{ items, total, pageCount, page: currentPage }, lots] = await Promise.all([
-    getAnimalsByFarm(farmId, filters, page, PAGE_SIZE),
-    getLotsForSelect(farmId),
-  ])
+  const { items, total, pageCount, page: currentPage } = await getAnimalsByFarm(farmId, filters, page, PAGE_SIZE)
 
   const isFiltered = Boolean(
     searchParams['search'] ||
@@ -174,11 +173,12 @@ export default async function AnimalsPage({ searchParams }: PageProps) {
   const session = await auth()
   if (!session) redirect('/login')
 
-  const { prisma } = await import('@/lib/prisma')
   const activeFarm = await getActiveFarm(session.user.id)
   if (!activeFarm) redirect('/onboarding')
   const { farmId } = activeFarm
   const params = await searchParams
+
+  const lots = await getLotsForSelect(farmId)
 
   return (
     <div className="space-y-5 pb-6">
@@ -195,10 +195,10 @@ export default async function AnimalsPage({ searchParams }: PageProps) {
       />
 
       <AnimalStatsBar farmId={farmId} />
-      <AnimalFilters />
+      <AnimalFilters lots={lots} />
 
       <Suspense fallback={<AnimalListSkeleton />}>
-        <AnimalListAsync farmId={farmId} searchParams={params} />
+        <AnimalListAsync farmId={farmId} searchParams={params} lots={lots} />
       </Suspense>
     </div>
   )
