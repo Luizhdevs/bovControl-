@@ -26,8 +26,8 @@ async function main() {
   for (const [type, list] of byType) {
     const pending  = list.filter(a => a.status === 'PENDING').length
     const resolved = list.filter(a => a.status === 'RESOLVED').length
-    const ignored  = list.filter(a => a.status === 'IGNORED').length
-    console.log(`\n═══ [${type}]  total=${list.length}  PENDING=${pending}  RESOLVED=${resolved}  IGNORED=${ignored}`)
+    const dismissed = list.filter(a => a.status === 'DISMISSED').length
+    console.log(`\n═══ [${type}]  total=${list.length}  PENDING=${pending}  RESOLVED=${resolved}  DISMISSED=${dismissed}`)
 
     for (const a of list) {
       const tag      = (a.animal?.tag  ?? 'N/A').padEnd(10)
