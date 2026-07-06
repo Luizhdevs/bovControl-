@@ -622,7 +622,7 @@ export function AnimalQuickActions({
 
       {/* Rodapé fixo — single row */}
       {isActive && (
-        <div className="fixed bottom-0 left-0 right-0 z-20 bg-background/95 backdrop-blur-md border-t border-border px-4 pt-3 pb-5">
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-t border-border px-4 pt-3 pb-5">
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1 h-12 text-sm font-medium" asChild>
               <a href={`/animals/${animalId}/edit`}>
