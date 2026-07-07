@@ -52,7 +52,7 @@ async function main() {
   }
 
   // 2. Alertas sem animal vinculado
-  const noAnimal = alerts.filter(a => !a.animalId && a.status === 'PENDING')
+  const noAnimal = alerts.filter(a => !a.animal && a.status === 'PENDING')
   console.log(`\nAlertas PENDING sem animal vinculado: ${noAnimal.length}`)
 
 
