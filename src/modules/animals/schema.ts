@@ -158,3 +158,14 @@ export const reactivateAnimalSchema = z.object({
 })
 
 export type ReactivateAnimalInput = z.infer<typeof reactivateAnimalSchema>
+
+// ─── Registrar Parto ───────────────────────────────────────
+
+export const calvingSchema = z.object({
+  animalId:  z.string().cuid('ID inválido'),
+  birthDate: z.coerce.date({ required_error: 'Informe a data do parto' }),
+  calveSex:  z.enum(['MALE', 'FEMALE'], { required_error: 'Informe o sexo do bezerro' }),
+  calveName: z.string().trim().max(60).optional(),
+})
+
+export type CalvingInput = z.infer<typeof calvingSchema>

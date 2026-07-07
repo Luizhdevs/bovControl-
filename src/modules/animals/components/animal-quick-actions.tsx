@@ -26,6 +26,7 @@ import {
   transferAnimalToLot,
   addWeightRecord,
   addAnimalPhoto,
+  registerCalving,
 } from '../actions'
 import {
   AnimalStatusActionsSheets,
@@ -48,13 +49,14 @@ import {
   Tag,
   MoreHorizontal,
   DollarSign,
+  Baby,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { LotSelectOption } from '../types'
 
 // ─── Tipos ─────────────────────────────────────────────────
 
-type SheetType = 'lot' | 'weight' | 'milk' | 'photo' | 'more' | StatusChangeType
+type SheetType = 'lot' | 'weight' | 'milk' | 'photo' | 'more' | 'calving' | StatusChangeType
 
 interface AnimalQuickActionsProps {
   animalId:    string
@@ -483,6 +485,130 @@ function PhotoSheet({
   )
 }
 
+// ─── Sheet: Registrar parto ────────────────────────────────
+
+function CalvingSheet({
+  animalId,
+  open,
+  onClose,
+}: {
+  animalId: string
+  open:     boolean
+  onClose:  () => void
+}) {
+  const [birthDate, setBirthDate] = useState('')
+  const [calveSex, setCalveSex]   = useState<'MALE' | 'FEMALE'>('FEMALE')
+  const [calveName, setCalveName] = useState('')
+  const [isPending, start]        = useTransition()
+  const { toast }                 = useToast()
+
+  function handleSubmit() {
+    if (!birthDate) {
+      toast({ title: 'Informe a data do parto', variant: 'destructive' })
+      return
+    }
+    start(async () => {
+      const result = await registerCalving({
+        animalId,
+        birthDate: new Date(birthDate + 'T12:00:00'),
+        calveSex,
+        calveName: calveName.trim() || undefined,
+      })
+      if (!result.success) {
+        toast({ title: 'Erro', description: result.error, variant: 'destructive' })
+        return
+      }
+      toast({ title: `Parto registrado!`, description: `Bezerro ${result.calveTag} criado.` })
+      setBirthDate('')
+      setCalveName('')
+      setCalveSex('FEMALE')
+      onClose()
+    })
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+      <SheetContent side="bottom" className="rounded-t-2xl pb-8">
+        <SheetHeader className="mb-5">
+          <SheetTitle>Registrar Parto</SheetTitle>
+          <SheetDescription>
+            Um bezerro será criado e vinculado a esta vaca automaticamente.
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="space-y-4">
+          {/* Sexo do bezerro */}
+          <div className="space-y-2">
+            <Label>Sexo do bezerro</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { value: 'FEMALE' as const, label: 'Fêmea ♀' },
+                { value: 'MALE'   as const, label: 'Macho ♂' },
+              ]).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setCalveSex(opt.value)}
+                  className={cn(
+                    'rounded-xl border py-3.5 text-sm font-semibold transition-all active:scale-95',
+                    calveSex === opt.value
+                      ? opt.value === 'FEMALE'
+                        ? 'border-pink-500 bg-pink-500/10 text-pink-500'
+                        : 'border-sky-500 bg-sky-500/10 text-sky-500'
+                      : 'border-border bg-card text-muted-foreground',
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Data do parto */}
+          <div className="space-y-2">
+            <Label>Data do parto</Label>
+            <Input
+              type="date"
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+              max={new Date().toISOString().slice(0, 10)}
+              style={{ fontSize: '16px' }}
+            />
+          </div>
+
+          {/* Nome do bezerro */}
+          <div className="space-y-2">
+            <Label>
+              Nome do bezerro
+              <span className="text-muted-foreground font-normal ml-1">(opcional)</span>
+            </Label>
+            <Input
+              value={calveName}
+              onChange={(e) => setCalveName(e.target.value)}
+              placeholder="Ex: Pintada, Formosa…"
+              maxLength={60}
+              style={{ fontSize: '16px' }}
+            />
+          </div>
+
+          <Button
+            className="w-full h-12 text-base"
+            onClick={handleSubmit}
+            disabled={isPending || !birthDate}
+          >
+            {isPending ? (
+              <Loader2 className="size-4 animate-spin mr-2" />
+            ) : (
+              <Baby className="size-4 mr-2" />
+            )}
+            {isPending ? 'Registrando…' : 'Registrar Parto'}
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
 // ─── Botão "+ Foto" reutilizável ──────────────────────────
 //
 // Client component standalone — usado no SectionCard "Linha do Tempo"
@@ -600,6 +726,12 @@ export function AnimalQuickActions({
       disabled: !guards.reproduction.allowed,
       disabledReason: guards.reproduction.reason,
     },
+    ...(guards.reproduction.allowed ? [{
+      id:      'calving',
+      icon:    Baby,
+      label:   'Parto',
+      onClick: () => setOpenSheet('calving'),
+    }] : []),
     {
       id:    'ear-tag',
       icon:  Tag,
@@ -680,6 +812,12 @@ export function AnimalQuickActions({
         animalId={animalId}
         farmId={farmId}
         open={openSheet === 'photo'}
+        onClose={() => setOpenSheet(null)}
+      />
+
+      <CalvingSheet
+        animalId={animalId}
+        open={openSheet === 'calving'}
         onClose={() => setOpenSheet(null)}
       />
 

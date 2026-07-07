@@ -30,6 +30,7 @@ import {
   markAnimalAsDeadSchema,
   markAnimalAsTransferredSchema,
   reactivateAnimalSchema,
+  calvingSchema,
 } from './schema'
 import type { ActionResult } from './types'
 
@@ -790,5 +791,118 @@ export async function reactivateAnimal(rawData: unknown): Promise<ActionResult<v
   } catch (error) {
     console.error('[reactivateAnimal]', error)
     return { success: false, error: 'Erro ao reativar animal. Tente novamente.' }
+  }
+}
+
+// ─── Registrar Parto ───────────────────────────────────────
+
+export async function registerCalving(
+  rawData: unknown,
+): Promise<{ success: boolean; error?: string; calveTag?: string }> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado' }
+
+    const parsed = calvingSchema.safeParse(rawData)
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.errors[0]!.message }
+    }
+
+    const activeFarm = await getActiveFarm(session.user.id)
+    if (!activeFarm) return { success: false, error: 'Fazenda não encontrada' }
+    const { farmId } = activeFarm
+
+    await requireFarmAccess(session.user.id, farmId, 'MANAGER')
+
+    const mother = await prisma.animal.findFirst({
+      where:  { id: parsed.data.animalId, farmId },
+      select: { id: true, tag: true, sex: true, category: true, status: true, breed: true, purpose: true, parityNumber: true },
+    })
+
+    if (!mother)               return { success: false, error: 'Animal não encontrado' }
+    if (mother.sex !== 'FEMALE') return { success: false, error: 'Apenas fêmeas podem registrar parto' }
+    if (mother.status !== 'ACTIVE') return { success: false, error: 'Animal não está ativo' }
+    if (mother.category === 'CALF') return { success: false, error: 'Bezerras não podem registrar parto' }
+
+    const { animalId, birthDate, calveSex, calveName } = parsed.data
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Gera próximo brinco dentro da transaction (evita gap em escritas paralelas)
+      const latest = await tx.animal.findFirst({
+        where:   { farmId },
+        select:  { tag: true },
+        orderBy: { tag: 'desc' },
+      })
+      const maxNum  = latest ? (parseInt(latest.tag.match(/(\d+)$/)?.[1] ?? '0', 10) || 0) : 0
+      const calveTag = `BOV-${String(maxNum + 1).padStart(4, '0')}`
+
+      // Registro de parto na tabela de reprodução
+      const reproRecord = await tx.reproduction.create({
+        data: { animalId, type: 'CALVING', date: birthDate, status: 'CONFIRMED' },
+        select: { id: true },
+      })
+
+      // Cria o bezerro
+      const calf = await tx.animal.create({
+        data: {
+          farmId,
+          tag:        calveTag,
+          name:       calveName ?? null,
+          sex:        calveSex,
+          category:   'CALF',
+          status:     'ACTIVE',
+          breed:      mother.breed,
+          purpose:    mother.purpose,
+          milkStatus: 'NA',
+          birthDate,
+          motherId:   animalId,
+        },
+        select: { id: true, tag: true },
+      })
+
+      // Atualiza mãe: data do último parto + contador de partos
+      await tx.animal.update({
+        where: { id: animalId },
+        data:  {
+          lastCalvingDate: birthDate,
+          parityNumber:    (mother.parityNumber ?? 0) + 1,
+        },
+      })
+
+      // Encerra alertas de parto pendentes para esta mãe
+      await tx.alert.updateMany({
+        where: { animalId, farmId, type: 'CALVING', status: 'PENDING' },
+        data:  { status: 'RESOLVED', resolvedAt: new Date() },
+      })
+
+      return { reproId: reproRecord.id, calveId: calf.id, calveTag: calf.tag }
+    })
+
+    auditLog({
+      farmId,
+      userId:   session.user.id,
+      action:   'CREATE',
+      entity:   'Reproduction',
+      entityId: result.reproId,
+      after: { type: 'CALVING', animalId, birthDate, calveTag: result.calveTag },
+      metadata: {
+        event:     'CALVING_REGISTERED',
+        motherTag: mother.tag,
+        calveSex,
+        calveName: calveName ?? null,
+        calveTag:  result.calveTag,
+        calveId:   result.calveId,
+      },
+    })
+
+    revalidatePath('/animals')
+    revalidatePath(`/animals/${animalId}`)
+    revalidatePath('/management/today')
+    revalidatePath('/reproduction')
+
+    return { success: true, calveTag: result.calveTag }
+  } catch (error) {
+    console.error('[registerCalving]', error)
+    return { success: false, error: 'Erro ao registrar parto. Tente novamente.' }
   }
 }
