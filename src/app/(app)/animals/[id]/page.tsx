@@ -112,7 +112,30 @@ export default async function AnimalDetailPage({
     animal.reproductions.length > 0,
   )
   const nextActions  = getNextActions(animal, vetSnapshot)
-  const calvingDays  = vetSnapshot ? daysToCalving(vetSnapshot.expectedCalvingDate) : null
+
+  // calvingDays: suprime "Parto vencido" se o animal já pariu desde a data prevista
+  // (animal.lastCalvingDate é atualizado por registerCalving e é sempre o mais fresco)
+  const rawCalvingDays = vetSnapshot ? daysToCalving(vetSnapshot.expectedCalvingDate) : null
+  const hasCalvedSinceExpected =
+    vetSnapshot?.expectedCalvingDate != null &&
+    animal.lastCalvingDate != null &&
+    new Date(animal.lastCalvingDate).getTime() >=
+      new Date(vetSnapshot.expectedCalvingDate).getTime() - 14 * 24 * 60 * 60 * 1000
+  const calvingDays = hasCalvedSinceExpected ? null : rawCalvingDays
+
+  // Valores efetivos de paridade — prefere o mais recente entre animal e snapshot vet
+  const effectiveLastCalving = (() => {
+    const a = animal.lastCalvingDate ?? null
+    const b = vetSnapshot?.lastCalvingDate ?? null
+    if (!a && !b) return null
+    if (!a) return b
+    if (!b) return a
+    return new Date(a) > new Date(b) ? a : b
+  })()
+  const effectiveParityNumber = Math.max(
+    animal.parityNumber ?? 0,
+    vetSnapshot?.parityNumber ?? 0,
+  ) || null
 
   const sexColor  = animal.sex === 'FEMALE' ? 'from-pink-500/20 to-purple-600/20' : 'from-sky-500/20 to-blue-600/20'
   const sexAccent = animal.sex === 'FEMALE' ? 'bg-pink-500' : 'bg-sky-500'
@@ -638,11 +661,11 @@ export default async function AnimalDetailPage({
 
             {/* Métricas */}
             <InfoRows>
-              {vetSnapshot.parityNumber != null && (
-                <InfoRow label="Partos (NP)" value={String(vetSnapshot.parityNumber)} />
+              {effectiveParityNumber != null && (
+                <InfoRow label="Partos (NP)" value={String(effectiveParityNumber)} />
               )}
-              {vetSnapshot.lastCalvingDate && (
-                <InfoRow label="Último parto"   value={formatDate(vetSnapshot.lastCalvingDate)} />
+              {effectiveLastCalving && (
+                <InfoRow label="Último parto" value={formatDate(effectiveLastCalving)} />
               )}
               {vetSnapshot.expectedCalvingDate && (
                 <InfoRow label="Parto previsto" value={formatDate(vetSnapshot.expectedCalvingDate)} />

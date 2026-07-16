@@ -82,18 +82,19 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
     prisma.animal.findMany({
       where:   { farmId, status: 'ACTIVE' },
       select: {
-        id:           true,
-        tag:          true,
-        name:         true,
-        sex:          true,
-        category:     true,
-        externalCode: true,
-        lotId:        true,
-        motherId:     true,
-        birthDate:    true,
-        lot:          { select: { name: true } },
-        photos:       { where: { isPrimary: true }, select: { url: true }, take: 1 },
-        _count:       { select: { photos: true, reproductions: true } },
+        id:              true,
+        tag:             true,
+        name:            true,
+        sex:             true,
+        category:        true,
+        externalCode:    true,
+        lotId:           true,
+        motherId:        true,
+        birthDate:       true,
+        lastCalvingDate: true,
+        lot:             { select: { name: true } },
+        photos:          { where: { isPrimary: true }, select: { url: true }, take: 1 },
+        _count:          { select: { photos: true, reproductions: true } },
       },
       orderBy: [{ category: 'asc' }, { tag: 'asc' }],
     }),
@@ -158,7 +159,16 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
       const daysUntilCalving = daysDiff(expectedCalvingDate, today)
 
       // ── Parto ──────────────────────────────────────────────
-      if (daysUntilCalving !== null && daysUntilCalving < 0) {
+      // Detecta se o animal já pariu desde a data prevista (tolerância 14 dias antes)
+      const expectedMs   = expectedCalvingDate ? new Date(expectedCalvingDate).getTime() : null
+      const lastCalvMs   = a.lastCalvingDate   ? new Date(a.lastCalvingDate).getTime()   : null
+      const TOLERANCE_MS = 14 * DAY_MS
+
+      const alreadyCalvedSinceExpected = lastCalvMs !== null && expectedMs !== null &&
+        lastCalvMs >= expectedMs - TOLERANCE_MS
+
+      // Parto vencido — só exibe se o animal não tiver parto registrado desde a data prevista
+      if (daysUntilCalving !== null && daysUntilCalving < 0 && !alreadyCalvedSinceExpected) {
         const abs = Math.abs(daysUntilCalving)
         const it = item(`${a.id}-calving-overdue`, base, origin,
           'CALVING_OVERDUE', 'HIGH',
@@ -169,27 +179,38 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
         )
         calving.push(it)
         critical.push(it)
-      } else if (reportGroup === 'CLOSE_UP' || (daysUntilCalving !== null && daysUntilCalving <= 30)) {
-        const d        = daysUntilCalving
-        const isUrgent = reportGroup === 'CLOSE_UP' || (d !== null && d <= 7)
-        const title    = reportGroup === 'CLOSE_UP' && d === null
-          ? 'Amojada — parto iminente'
-          : d === 0 ? 'Parto previsto para hoje'
-          : `Parto em ${d} dia${d !== 1 ? 's' : ''}`
-        const reason   = expectedCalvingDate
-          ? `Previsto para ${new Date(expectedCalvingDate).toLocaleDateString('pt-BR')}`
-          : 'Vaca no grupo amojadas'
-        const it = item(`${a.id}-calving-soon`, base, origin,
-          'CALVING_SOON', isUrgent ? 'HIGH' : 'MEDIUM',
-          title, reason, d,
-          expectedCalvingDate ? new Date(expectedCalvingDate) : null,
-        )
-        calving.push(it)
-        if (isUrgent) critical.push(it)
+      } else if (
+        !alreadyCalvedSinceExpected &&
+        (reportGroup === 'CLOSE_UP' || (daysUntilCalving !== null && daysUntilCalving <= 30))
+      ) {
+        // Parto próximo — pula se a vaca já pariu recentemente (60 dias) ou desde a data prevista
+        const calvedRecently60d = lastCalvMs !== null &&
+          lastCalvMs >= today.getTime() - 60 * DAY_MS
+        if (!calvedRecently60d) {
+          const d        = daysUntilCalving
+          const isUrgent = reportGroup === 'CLOSE_UP' || (d !== null && d <= 7)
+          const title    = reportGroup === 'CLOSE_UP' && d === null
+            ? 'Amojada — parto iminente'
+            : d === 0 ? 'Parto previsto para hoje'
+            : `Parto em ${d} dia${d !== 1 ? 's' : ''}`
+          const reason   = expectedCalvingDate
+            ? `Previsto para ${new Date(expectedCalvingDate).toLocaleDateString('pt-BR')}`
+            : 'Vaca no grupo amojadas'
+          const it = item(`${a.id}-calving-soon`, base, origin,
+            'CALVING_SOON', isUrgent ? 'HIGH' : 'MEDIUM',
+            title, reason, d,
+            expectedCalvingDate ? new Date(expectedCalvingDate) : null,
+          )
+          calving.push(it)
+          if (isUrgent) critical.push(it)
+        }
       }
 
       // ── A secar ────────────────────────────────────────────
-      if (reportGroup === 'TO_DRY') {
+      // Suprime se a vaca já pariu recentemente (ela já secou e pariu — status vet desatualizado)
+      const calvedInLast90d = lastCalvMs !== null &&
+        lastCalvMs >= today.getTime() - 90 * DAY_MS
+      if (reportGroup === 'TO_DRY' && !calvedInLast90d) {
         const it = item(`${a.id}-dry`, base, origin,
           'DRY_OFF_DUE', 'HIGH',
           'Secar vaca',
@@ -200,14 +221,15 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
       }
 
       // ── Reprodução ─────────────────────────────────────────
-      if (reportGroup === 'EMPTY_LATE') {
+      // Suprime alertas reprodutivos se a vaca já pariu recentemente
+      if (reportGroup === 'EMPTY_LATE' && !calvedInLast90d) {
         reproduction.push(item(`${a.id}-empty-late`, base, origin,
           'EMPTY_COW_LATE', 'MEDIUM',
           'Vaca vazia atrasada',
           'Vazia há mais de 45 dias sem inseminação',
         ))
       }
-      if (reportGroup === 'INSEMINATED_OVER_30D') {
+      if (reportGroup === 'INSEMINATED_OVER_30D' && !calvedInLast90d) {
         reproduction.push(item(`${a.id}-preg-check`, base, origin,
           'PREGNANCY_CHECK_DUE', 'MEDIUM',
           'Diagnóstico de gestação pendente',
