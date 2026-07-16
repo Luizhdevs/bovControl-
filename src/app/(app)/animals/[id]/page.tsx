@@ -113,29 +113,41 @@ export default async function AnimalDetailPage({
   )
   const nextActions  = getNextActions(animal, vetSnapshot)
 
-  // calvingDays: suprime "Parto vencido" se o animal já pariu desde a data prevista
-  // (animal.lastCalvingDate é atualizado por registerCalving e é sempre o mais fresco)
-  const rawCalvingDays = vetSnapshot ? daysToCalving(vetSnapshot.expectedCalvingDate) : null
-  const hasCalvedSinceExpected =
-    vetSnapshot?.expectedCalvingDate != null &&
-    animal.lastCalvingDate != null &&
-    new Date(animal.lastCalvingDate).getTime() >=
-      new Date(vetSnapshot.expectedCalvingDate).getTime() - 14 * 24 * 60 * 60 * 1000
-  const calvingDays = hasCalvedSinceExpected ? null : rawCalvingDays
+  // Data efetiva do último parto — usa as 3 fontes disponíveis:
+  //   1. animal.lastCalvingDate (atualizado por registerCalving)
+  //   2. vetSnapshot.lastCalvingDate (do relatório PRODAP)
+  //   3. maternalChildren — filho mais recente (cobre casos de createAnimal + motherId)
+  const mostRecentChildBirth = animal.maternalChildren
+    .map(c => c.birthDate)
+    .filter((d): d is Date => d != null)
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? null
 
-  // Valores efetivos de paridade — prefere o mais recente entre animal e snapshot vet
   const effectiveLastCalving = (() => {
-    const a = animal.lastCalvingDate ?? null
-    const b = vetSnapshot?.lastCalvingDate ?? null
-    if (!a && !b) return null
-    if (!a) return b
-    if (!b) return a
-    return new Date(a) > new Date(b) ? a : b
+    const candidates = [
+      animal.lastCalvingDate   ? new Date(animal.lastCalvingDate)          : null,
+      vetSnapshot?.lastCalvingDate ? new Date(vetSnapshot.lastCalvingDate) : null,
+      mostRecentChildBirth     ? new Date(mostRecentChildBirth)            : null,
+    ].filter((d): d is Date => d != null)
+    if (candidates.length === 0) return null
+    return candidates.reduce((best, d) => d > best ? d : best)
   })()
+
   const effectiveParityNumber = Math.max(
     animal.parityNumber ?? 0,
     vetSnapshot?.parityNumber ?? 0,
+    animal.maternalChildren.length,
   ) || null
+
+  // calvingDays: suprime "Parto vencido" se qualquer fonte mostra parto recente
+  const rawCalvingDays = vetSnapshot ? daysToCalving(vetSnapshot.expectedCalvingDate) : null
+  const expectedCalvingMs = vetSnapshot?.expectedCalvingDate
+    ? new Date(vetSnapshot.expectedCalvingDate).getTime()
+    : null
+  const hasCalvedSinceExpected =
+    expectedCalvingMs != null &&
+    effectiveLastCalving != null &&
+    effectiveLastCalving.getTime() >= expectedCalvingMs - 14 * 24 * 60 * 60 * 1000
+  const calvingDays = hasCalvedSinceExpected ? null : rawCalvingDays
 
   const sexColor  = animal.sex === 'FEMALE' ? 'from-pink-500/20 to-purple-600/20' : 'from-sky-500/20 to-blue-600/20'
   const sexAccent = animal.sex === 'FEMALE' ? 'bg-pink-500' : 'bg-sky-500'

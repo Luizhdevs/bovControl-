@@ -137,7 +137,52 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
   // 3. Mapa animalId → snapshot para lookup O(1)
   const snapMap = new Map(vetSnapshots.map((s) => [s.animalId!, s]))
 
-  // 4. Seções
+  // 4. Detecção complementar de partos (casos onde lastCalvingDate não foi atualizado):
+  //    - reproduções do tipo CALVING registradas nos últimos 180 dias
+  //    - filhos (maternalChildren) nascidos nos últimos 180 dias
+  //    Evita N+1: 2 groupBy queries em paralelo filtradas pelo conjunto de animalIds
+  const animalIds    = animals.map(a => a.id)
+  const since180dMs  = today.getTime() - 180 * DAY_MS
+  const since180d    = new Date(since180dMs)
+
+  const [recentCalvingReprods, recentCalfBirths] = await Promise.all([
+    animalIds.length > 0
+      ? prisma.reproduction.groupBy({
+          by:    ['animalId'],
+          where: {
+            animalId: { in: animalIds },
+            type:     'CALVING',
+            date:     { gte: since180d },
+          },
+          _max: { date: true },
+        })
+      : Promise.resolve([]),
+
+    animalIds.length > 0
+      ? prisma.animal.groupBy({
+          by:    ['motherId'],
+          where: {
+            motherId:  { in: animalIds },
+            birthDate: { gte: since180d },
+          },
+          _max: { birthDate: true },
+        })
+      : Promise.resolve([]),
+  ])
+
+  // Mapas de lookup O(1): animalId → timestamp do parto mais recente detectado
+  const reproCalvMap = new Map(
+    recentCalvingReprods
+      .filter(r => r._max.date != null)
+      .map(r  => [r.animalId, r._max.date!.getTime()]),
+  )
+  const calfBirthMap = new Map(
+    recentCalfBirths
+      .filter(r => r.motherId != null && r._max.birthDate != null)
+      .map(r  => [r.motherId!, r._max.birthDate!.getTime()]),
+  )
+
+  // 5. Seções
   const critical:     ManagementActionItem[] = []
   const calving:      ManagementActionItem[] = []
   const dryOff:       ManagementActionItem[] = []
@@ -159,9 +204,20 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
       const daysUntilCalving = daysDiff(expectedCalvingDate, today)
 
       // ── Parto ──────────────────────────────────────────────
-      // Detecta se o animal já pariu desde a data prevista (tolerância 14 dias antes)
-      const expectedMs   = expectedCalvingDate ? new Date(expectedCalvingDate).getTime() : null
-      const lastCalvMs   = a.lastCalvingDate   ? new Date(a.lastCalvingDate).getTime()   : null
+      // Detecta se o animal já pariu desde a data prevista (tolerância 14 dias antes).
+      // Usa 3 fontes para cobrir tanto partos via registerCalving quanto via createAnimal+motherId:
+      //   1. animal.lastCalvingDate (atualizado por registerCalving)
+      //   2. Reprodução CALVING registrada diretamente
+      //   3. Filho (maternalChildren) com birthDate recente
+      const expectedMs = expectedCalvingDate ? new Date(expectedCalvingDate).getTime() : null
+      const lastCalvMs = [
+        a.lastCalvingDate    ? new Date(a.lastCalvingDate).getTime() : null,
+        reproCalvMap.get(a.id) ?? null,
+        calfBirthMap.get(a.id) ?? null,
+      ].reduce<number | null>(
+        (best, ms) => ms === null ? best : best === null ? ms : Math.max(best, ms),
+        null,
+      )
       const TOLERANCE_MS = 14 * DAY_MS
 
       const alreadyCalvedSinceExpected = lastCalvMs !== null && expectedMs !== null &&
