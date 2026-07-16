@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition }        from 'react'
-import { PawPrint, ArrowLeftRight, X, Check } from 'lucide-react'
+import { PawPrint, ArrowLeftRight, X, Check, CheckSquare } from 'lucide-react'
 import { AnimalCard, DESKTOP_COLS }        from './animal-card'
 import { EmptyState }                      from '@/components/shared/empty-state'
 import { Button }                          from '@/components/ui/button'
@@ -21,6 +21,7 @@ interface AnimalListProps {
 
 export function AnimalList({ animals, isFiltered, lots, farmId }: AnimalListProps) {
   const { toast }                         = useToast()
+  const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds]     = useState<Set<string>>(new Set())
   const [targetLotId, setTargetLotId]     = useState('')
   const [isPending, startTransition]      = useTransition()
@@ -42,7 +43,12 @@ export function AnimalList({ animals, isFiltered, lots, farmId }: AnimalListProp
     else setSelectedIds(new Set(animals.map(a => a.id)))
   }
 
-  function clearSelection() {
+  function enterSelectionMode() {
+    setSelectionMode(true)
+  }
+
+  function exitSelectionMode() {
+    setSelectionMode(false)
     setSelectedIds(new Set())
     setTargetLotId('')
   }
@@ -54,7 +60,7 @@ export function AnimalList({ animals, isFiltered, lots, farmId }: AnimalListProp
       if (result.success) {
         const { moved, skipped } = result.data!
         toast({ title: `${moved} animal${moved !== 1 ? 'is' : ''} transferido${moved !== 1 ? 's' : ''} com sucesso.${skipped > 0 ? ` (${skipped} ignorado${skipped !== 1 ? 's' : ''})` : ''}` })
-        clearSelection()
+        exitSelectionMode()
       } else {
         toast({ title: result.error ?? 'Erro na transferência.', variant: 'destructive' })
       }
@@ -84,12 +90,25 @@ export function AnimalList({ animals, isFiltered, lots, farmId }: AnimalListProp
     <>
       {/* ── MOBILE: grade de cards ────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:hidden">
+        {/* Botão de modo de seleção — mobile */}
+        {!selectionMode && (
+          <button
+            type="button"
+            onClick={enterSelectionMode}
+            className="col-span-full flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-fit ml-auto"
+          >
+            <CheckSquare className="size-3.5" />
+            Selecionar
+          </button>
+        )}
+
         {animals.map((animal) => (
           <AnimalCard
             key={animal.id}
             animal={animal}
             isSelected={selectedIds.has(animal.id)}
             onSelect={() => toggle(animal.id)}
+            showCheckbox={selectionMode}
           />
         ))}
       </div>
@@ -102,23 +121,35 @@ export function AnimalList({ animals, isFiltered, lots, farmId }: AnimalListProp
           'bg-muted/50 border-b border-border',
           'text-[11px] font-semibold uppercase tracking-wider text-muted-foreground',
         )}>
-          {/* Checkbox de selecionar tudo */}
-          <div
-            className="w-10 flex-none flex items-center justify-center py-2.5 cursor-pointer"
-            onClick={toggleAll}
-          >
-            <div className={cn(
-              'size-4 rounded border-2 flex items-center justify-center transition-colors',
-              allSelected
-                ? 'bg-primary border-primary'
-                : count > 0
-                  ? 'bg-primary/20 border-primary'
-                  : 'border-muted-foreground/40 hover:border-primary/60',
-            )}>
-              {allSelected && <Check className="size-2.5 text-primary-foreground stroke-[3]" />}
-              {!allSelected && count > 0 && <span className="size-2 rounded-sm bg-primary" />}
+          {/* Checkbox "selecionar tudo" — só aparece no modo de seleção */}
+          {selectionMode ? (
+            <div
+              className="w-10 flex-none flex items-center justify-center py-2.5 cursor-pointer"
+              onClick={toggleAll}
+            >
+              <div className={cn(
+                'size-4 rounded border-2 flex items-center justify-center transition-colors',
+                allSelected
+                  ? 'bg-primary border-primary'
+                  : count > 0
+                    ? 'bg-primary/20 border-primary'
+                    : 'border-muted-foreground/40 hover:border-primary/60',
+              )}>
+                {allSelected && <Check className="size-2.5 text-primary-foreground stroke-[3]" />}
+                {!allSelected && count > 0 && <span className="size-2 rounded-sm bg-primary" />}
+              </div>
             </div>
-          </div>
+          ) : (
+            /* Botão para entrar no modo de seleção */
+            <button
+              type="button"
+              onClick={enterSelectionMode}
+              title="Selecionar animais"
+              className="w-10 flex-none flex items-center justify-center py-2.5 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+            >
+              <CheckSquare className="size-4" />
+            </button>
+          )}
 
           {/* Colunas */}
           <div className={cn('flex-1 grid gap-3 pr-4 py-2.5 items-center', DESKTOP_COLS)}>
@@ -140,27 +171,39 @@ export function AnimalList({ animals, isFiltered, lots, farmId }: AnimalListProp
               animal={animal}
               isSelected={selectedIds.has(animal.id)}
               onSelect={() => toggle(animal.id)}
+              showCheckbox={selectionMode}
             />
           ))}
         </div>
       </div>
 
       {/* ── BARRA DE AÇÕES EM LOTE ───────────────────────── */}
-      {count > 0 && (
+      {selectionMode && (
         <div className={cn(
           'fixed bottom-0 left-0 right-0 z-30',
           'bg-background/95 backdrop-blur-md border-t border-border',
           'px-4 py-3',
-          'md:left-56', // alinha com a sidebar (w-56 = 224px)
+          'md:left-56',
         )}>
           <div className="flex items-center gap-3 flex-wrap">
-            {/* Contagem */}
-            <span className="text-sm font-medium text-foreground shrink-0">
-              {count} selecionado{count !== 1 ? 's' : ''}
-            </span>
+            {/* Contador de selecionados */}
+            <div className="flex items-center gap-2 shrink-0">
+              <span className={cn(
+                'inline-flex items-center justify-center min-w-[28px] h-7 rounded-full px-2',
+                'text-sm font-bold tabular-nums',
+                count > 0
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground',
+              )}>
+                {count}
+              </span>
+              <span className="text-sm font-medium text-foreground">
+                {count === 1 ? 'selecionado' : 'selecionados'}
+              </span>
+            </div>
 
             {/* Seletor de lote */}
-            <Select value={targetLotId} onValueChange={setTargetLotId}>
+            <Select value={targetLotId} onValueChange={setTargetLotId} disabled={count === 0}>
               <SelectTrigger className="h-9 text-sm flex-1 min-w-[180px] max-w-xs">
                 <SelectValue placeholder="Selecionar lote..." />
               </SelectTrigger>
@@ -183,18 +226,18 @@ export function AnimalList({ animals, isFiltered, lots, farmId }: AnimalListProp
               size="sm"
               className="h-9 gap-1.5 shrink-0"
               onClick={handleTransfer}
-              disabled={!targetLotId || isPending}
+              disabled={!targetLotId || count === 0 || isPending}
             >
               <ArrowLeftRight className="size-3.5" />
               {isPending ? 'Transferindo...' : 'Transferir'}
             </Button>
 
-            {/* Cancelar */}
+            {/* Cancelar — sai do modo de seleção */}
             <Button
               size="sm"
               variant="ghost"
               className="h-9 gap-1 shrink-0 text-muted-foreground"
-              onClick={clearSelection}
+              onClick={exitSelectionMode}
               disabled={isPending}
             >
               <X className="size-3.5" />

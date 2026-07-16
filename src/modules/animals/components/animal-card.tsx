@@ -104,12 +104,13 @@ function AnimalAvatar({ animal, size }: { animal: AnimalListItem; size: 'sm' | '
 // ─── Componente ────────────────────────────────────────────
 
 interface AnimalCardProps {
-  animal:     AnimalListItem
-  isSelected?: boolean
-  onSelect?:   () => void
+  animal:        AnimalListItem
+  isSelected?:   boolean
+  onSelect?:     () => void
+  showCheckbox?: boolean
 }
 
-export function AnimalCard({ animal, isSelected = false, onSelect }: AnimalCardProps) {
+export function AnimalCard({ animal, isSelected = false, onSelect, showCheckbox = false }: AnimalCardProps) {
   const age           = calculateAge(animal.birthDate)
   const categoryColor = CATEGORY_COLORS[animal.category] ?? ''
   const PurposeIcon   = PURPOSE_ICONS[animal.purpose]
@@ -118,23 +119,27 @@ export function AnimalCard({ animal, isSelected = false, onSelect }: AnimalCardP
   return (
     <>
       {/* ── MOBILE (< md) — card compacto ─────────────────── */}
-      <div className={cn(
-        'md:hidden flex items-center gap-3 p-3',
-        'rounded-xl border border-border bg-card',
-        'min-h-[88px] transition-all duration-150',
-        isSelected
-          ? 'border-primary/60 bg-primary/5'
-          : 'hover:border-primary/40 hover:shadow-md hover:shadow-primary/5',
-      )}>
-        {/* Checkbox mobile */}
-        {onSelect && (
+      <div
+        className={cn(
+          'md:hidden flex items-center gap-3 p-3',
+          'rounded-xl border border-border bg-card',
+          'min-h-[88px] transition-all duration-150',
+          isSelected
+            ? 'border-primary/60 bg-primary/5'
+            : 'hover:border-primary/40 hover:shadow-md hover:shadow-primary/5',
+          showCheckbox && 'cursor-pointer',
+        )}
+        onClick={showCheckbox ? () => onSelect?.() : undefined}
+      >
+        {/* Checkbox mobile — só no modo de seleção */}
+        {showCheckbox && onSelect && (
           <AnimalCheckbox checked={isSelected} onChange={onSelect} />
         )}
 
         <Link
           href={`/animals/${animal.id}`}
           className="flex items-center gap-3 flex-1 min-w-0"
-          onClick={e => onSelect && isSelected && e.preventDefault()}
+          onClick={showCheckbox ? e => e.preventDefault() : undefined}
         >
           <AnimalAvatar animal={animal} size="md" />
 
@@ -173,13 +178,18 @@ export function AnimalCard({ animal, isSelected = false, onSelect }: AnimalCardP
         'hidden md:flex items-center transition-all duration-150',
         isSelected ? 'bg-primary/5' : 'hover:bg-primary/5',
       )}>
-        {/* Checkbox — fora do link para evitar conflito de interação */}
-        <div
-          className="w-10 flex-none flex items-center justify-center py-3 cursor-pointer"
-          onClick={() => onSelect?.()}
-        >
-          <AnimalCheckbox checked={isSelected} onChange={() => onSelect?.()} />
-        </div>
+        {/* Checkbox — só no modo de seleção */}
+        {showCheckbox ? (
+          <div
+            className="w-10 flex-none flex items-center justify-center py-3 cursor-pointer"
+            onClick={() => onSelect?.()}
+          >
+            <AnimalCheckbox checked={isSelected} onChange={() => onSelect?.()} />
+          </div>
+        ) : (
+          /* Espaço reservado sem checkbox para manter alinhamento com o header */
+          <div className="w-10 flex-none" />
+        )}
 
         {/* Conteúdo — link ocupa o restante */}
         <Link
