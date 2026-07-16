@@ -109,12 +109,16 @@ export type AddWeightInput = z.infer<typeof addWeightSchema>
 // ─── Filtros da listagem ───────────────────────────────────
 
 export const animalFiltersSchema = z.object({
-  search:   z.string().optional(),
-  sex:      z.enum(['MALE', 'FEMALE']).optional(),
-  category: z.enum(['CALF', 'HEIFER', 'COW', 'BULL', 'STEER']).optional(),
-  status:   z.enum(['ACTIVE', 'SOLD', 'DEAD', 'TRANSFERRED']).default('ACTIVE'),
-  purpose:  z.enum(['DAIRY', 'BEEF', 'BOTH']).optional(),
-  lotId:    z.string().optional(), // 'none' = animais sem lote
+  search:    z.string().optional(),
+  sex:       z.enum(['MALE', 'FEMALE']).optional(),
+  category:  z.enum(['CALF', 'HEIFER', 'COW', 'BULL', 'STEER']).optional(),
+  // 'ALL' = sem filtro de status (mostra todos). Default = 'ACTIVE' para novo acesso.
+  status:    z.enum(['ACTIVE', 'SOLD', 'DEAD', 'TRANSFERRED', 'ALL']).default('ACTIVE'),
+  purpose:   z.enum(['DAIRY', 'BEEF', 'BOTH']).optional(),
+  lotId:     z.string().optional(),      // 'none' = animais sem lote
+  pastureId: z.string().optional(),      // 'none' = lotes sem pasto
+  // Faixa de idade em dias: '0-30' | '30-90' | '90-180' | '180-365' | '365-730' | '730+'
+  agePreset: z.enum(['0-30', '30-90', '90-180', '180-365', '365-730', '730+']).optional(),
 })
 
 export type AnimalFiltersInput = z.infer<typeof animalFiltersSchema>

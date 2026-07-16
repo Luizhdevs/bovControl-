@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation'
 import { Button }   from '@/components/ui/button'
 import { Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 
-import { getAnimalsByFarm, getAnimalStats, getLotsForSelect } from '@/modules/animals/queries'
+import { getAnimalsByFarm, getAnimalStats, getLotsForSelect, getPasturesForSelect } from '@/modules/animals/queries'
 import { AnimalList }    from '@/modules/animals/components/animal-list'
 import { AnimalFilters } from '@/modules/animals/components/animal-filters'
 import { PageHeader }    from '@/components/shared/page-header'
@@ -123,21 +123,28 @@ async function AnimalListAsync({
   lots:         Awaited<ReturnType<typeof getLotsForSelect>>
 }) {
   const filters = animalFiltersSchema.parse({
-    search:   searchParams['search'],
-    sex:      searchParams['sex'],
-    category: searchParams['category'],
-    status:   searchParams['status'] ?? 'ACTIVE',
-    purpose:  searchParams['purpose'],
-    lotId:    searchParams['lotId'],
+    search:    searchParams['search'],
+    sex:       searchParams['sex'],
+    category:  searchParams['category'],
+    status:    searchParams['status'] ?? 'ACTIVE',
+    purpose:   searchParams['purpose'],
+    lotId:     searchParams['lotId'],
+    pastureId: searchParams['pastureId'],
+    agePreset: searchParams['agePreset'],
   })
 
   const page = Math.max(1, parseInt(searchParams['page'] ?? '1', 10) || 1)
   const { items, total, pageCount, page: currentPage } = await getAnimalsByFarm(farmId, filters, page, PAGE_SIZE)
 
+  const effectiveStatus = searchParams['status'] ?? 'ACTIVE'
   const isFiltered = Boolean(
-    searchParams['search'] ||
-    searchParams['sex']    ||
-    searchParams['category'],
+    searchParams['search']    ||
+    searchParams['sex']       ||
+    searchParams['category']  ||
+    searchParams['agePreset'] ||
+    searchParams['lotId']     ||
+    searchParams['pastureId'] ||
+    (effectiveStatus && effectiveStatus !== 'ACTIVE'),
   )
 
   return (
@@ -178,7 +185,10 @@ export default async function AnimalsPage({ searchParams }: PageProps) {
   const { farmId } = activeFarm
   const params = await searchParams
 
-  const lots = await getLotsForSelect(farmId)
+  const [lots, pastures] = await Promise.all([
+    getLotsForSelect(farmId),
+    getPasturesForSelect(farmId),
+  ])
 
   return (
     <div className="space-y-5 pb-6">
@@ -195,7 +205,7 @@ export default async function AnimalsPage({ searchParams }: PageProps) {
       />
 
       <AnimalStatsBar farmId={farmId} />
-      <AnimalFilters lots={lots} />
+      <AnimalFilters lots={lots} pastures={pastures} />
 
       <Suspense fallback={<AnimalListSkeleton />}>
         <AnimalListAsync farmId={farmId} searchParams={params} lots={lots} />

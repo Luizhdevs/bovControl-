@@ -12,6 +12,22 @@ import type {
 
 // ─── Builder de where clause ──────────────────────────────
 
+// Converte preset de idade em range de birthDate
+function agePresetToBirthDateRange(preset: string | undefined) {
+  if (!preset) return {}
+  const today = new Date()
+  const ranges: Record<string, { gte?: Date; lte?: Date }> = {
+    '0-30':    { gte: subDays(today, 30) },
+    '30-90':   { gte: subDays(today, 90),  lte: subDays(today, 30) },
+    '90-180':  { gte: subDays(today, 180), lte: subDays(today, 90) },
+    '180-365': { gte: subDays(today, 365), lte: subDays(today, 180) },
+    '365-730': { gte: subDays(today, 730), lte: subDays(today, 365) },
+    '730+':    { lte: subDays(today, 730) },
+  }
+  const range = ranges[preset]
+  return range ? { birthDate: range } : {}
+}
+
 function buildAnimalWhere(
   farmId:  string,
   filters: Partial<AnimalFiltersInput>,
@@ -20,19 +36,33 @@ function buildAnimalWhere(
     search,
     sex,
     category,
-    status  = 'ACTIVE',
+    status    = 'ACTIVE',
     purpose,
     lotId,
+    pastureId,
+    agePreset,
   } = filters
+
+  // status 'ALL' = não filtrar por status
+  const effectiveStatus = status === 'ALL' ? undefined : status
+
+  // lotId e pastureId são mutuamente exclusivos: pastureId filtra via lot.pastureId
+  const lotFilter =
+    pastureId === 'none' ? { lot: { is: null } }
+    : pastureId          ? { lot: { pastureId } }
+    : lotId === 'none'   ? { lotId: null }
+    : lotId              ? { lotId }
+    : {}
 
   return {
     farmId,
-    status,
+    ...(effectiveStatus && { status: effectiveStatus }),
     ...(sex      && { sex }),
     ...(category && { category }),
     ...(purpose  && { purpose }),
-    ...(lotId === 'none' ? { lotId: null } : lotId ? { lotId } : {}),
-    ...(search   && {
+    ...lotFilter,
+    ...agePresetToBirthDateRange(agePreset),
+    ...(search && {
       OR: [
         { tag:  { contains: search, mode: 'insensitive' as const } },
         { name: { contains: search, mode: 'insensitive' as const } },
@@ -52,7 +82,12 @@ const ANIMAL_LIST_SELECT = {
   breed:     true,
   birthDate: true,
   lot: {
-    select: { id: true, name: true, type: true },
+    select: {
+      id:       true,
+      name:     true,
+      type:     true,
+      pasture:  { select: { id: true, name: true } },
+    },
   },
   photos: {
     where:  { isPrimary: true },
@@ -235,4 +270,14 @@ export async function generateAnimalTag(farmId: string): Promise<string> {
     : 0
 
   return `BOV-${String(maxNum + 1).padStart(4, '0')}`
+}
+
+// ─── Pastos para select ───────────────────────────────────
+
+export async function getPasturesForSelect(farmId: string) {
+  return prisma.pasture.findMany({
+    where:   { farmId },
+    select:  { id: true, name: true },
+    orderBy: { name: 'asc' },
+  })
 }
