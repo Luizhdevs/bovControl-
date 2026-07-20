@@ -1028,3 +1028,13 @@ export async function getLotsForDryOff(): Promise<{ id: string; name: string; ty
     orderBy: { name: 'asc' },
   })
 }
+
+// ─── Transferir lote (wrapper para páginas sem farmId no client) ──
+
+export async function transferLotFromSession(rawData: unknown): Promise<ActionResult<void>> {
+  const session = await auth()
+  if (!session) return { success: false, error: 'Não autorizado' }
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) return { success: false, error: 'Fazenda não encontrada' }
+  return transferAnimalToLot(activeFarm.farmId, rawData)
+}

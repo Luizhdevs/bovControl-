@@ -7,10 +7,36 @@ import Image         from 'next/image'
 import { cn }        from '@/lib/utils'
 import {
   AlertTriangle, Baby, Droplets, CheckCircle2, ChevronRight,
-  Camera, Bell, Heart, Stethoscope, Play,
+  Camera, Bell, Heart, Stethoscope, Layers2,
+  Edit2,
 } from 'lucide-react'
 import type { ManagementActionItem, ManagementOverview } from '../types'
-import { DryOffSheet } from './dry-off-sheet'
+import { DryOffSheet }            from './dry-off-sheet'
+import { ManagementCalvingSheet } from './management-calving-sheet'
+import { ManagementLotSheet }     from './management-lot-sheet'
+
+// ─── Tipo do sheet ativo ──────────────────────────────────
+
+type ActiveSheet =
+  | { type: 'DRY_OFF';  item: ManagementActionItem }
+  | { type: 'CALVING';  item: ManagementActionItem }
+  | { type: 'LOT';      item: ManagementActionItem }
+  | null
+
+// ─── Mapa de botões por tipo de ação ─────────────────────
+
+type SheetTriggerType = 'DRY_OFF' | 'CALVING' | 'LOT'
+
+const ACTION_BUTTON: Partial<Record<string, {
+  label:      string
+  sheetType:  SheetTriggerType
+  className:  string
+}>> = {
+  DRY_OFF_DUE:     { label: 'Secar',    sheetType: 'DRY_OFF', className: 'bg-amber-500/15 text-amber-700 dark:text-amber-400 hover:bg-amber-500/25' },
+  CALVING_OVERDUE: { label: 'Parto',    sheetType: 'CALVING', className: 'bg-violet-500/15 text-violet-700 dark:text-violet-400 hover:bg-violet-500/25' },
+  CALVING_SOON:    { label: 'Parto',    sheetType: 'CALVING', className: 'bg-violet-500/15 text-violet-700 dark:text-violet-400 hover:bg-violet-500/25' },
+  MISSING_LOT:     { label: 'Lote',     sheetType: 'LOT',     className: 'bg-primary/10 text-primary hover:bg-primary/20' },
+}
 
 // ─── Labels ───────────────────────────────────────────────
 
@@ -22,7 +48,7 @@ const ORIGIN_LABEL   = {
   UNKNOWN:             'Indefinido',
 } as const
 
-// ─── Componentes de badge ─────────────────────────────────
+// ─── Badges ──────────────────────────────────────────────
 
 function PriorityBadge({ priority }: { priority: ManagementActionItem['priority'] }) {
   return (
@@ -65,22 +91,26 @@ function AnimalThumb({ photoUrl, tag }: { photoUrl: string | null; tag: string }
   )
 }
 
-// ─── ActionCard com botão de ação inline ──────────────────
+// ─── ActionCard ──────────────────────────────────────────
 
 function ActionCard({
   it,
-  onDryOff,
+  onSheet,
 }: {
-  it:        ManagementActionItem
-  onDryOff?: (item: ManagementActionItem) => void
+  it:       ManagementActionItem
+  onSheet:  (sheet: ActiveSheet) => void
 }) {
-  const showDryOffButton = it.type === 'DRY_OFF_DUE' && !!onDryOff
+  const btn = ACTION_BUTTON[it.type]
+
+  // INCOMPLETE_CALF → link direto para edição
+  const isIncompleteEdit = it.type === 'INCOMPLETE_CALF'
 
   return (
-    <div className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+    <div className="flex items-center gap-2 py-3 first:pt-0 last:pb-0">
+      {/* Link principal ocupa o máximo, clica e vai para o animal */}
       <Link
         href={it.href}
-        className="flex items-start gap-3 flex-1 min-w-0 hover:bg-muted/30 -mx-4 px-4 rounded-lg transition-colors py-1 -my-1"
+        className="flex items-start gap-3 flex-1 min-w-0 hover:bg-muted/30 -mx-3 px-3 rounded-lg transition-colors py-1 -my-1"
       >
         <AnimalThumb photoUrl={it.photoUrl} tag={it.animalTag} />
         <div className="flex-1 min-w-0">
@@ -103,25 +133,34 @@ function ActionCard({
           <p className="text-sm font-medium mt-1">{it.title}</p>
           <p className="text-xs text-muted-foreground mt-0.5">{it.reason}</p>
         </div>
-        {!showDryOffButton && (
-          <ChevronRight className="size-4 text-muted-foreground shrink-0 mt-1" />
+        {!btn && !isIncompleteEdit && (
+          <ChevronRight className="size-4 text-muted-foreground shrink-0 self-center" />
         )}
       </Link>
 
-      {/* Botão de ação rápida — só para DRY_OFF_DUE */}
-      {showDryOffButton && (
+      {/* Botão de ação rápida — abre sheet */}
+      {btn && (
         <button
           type="button"
-          onClick={() => onDryOff(it)}
+          onClick={() => onSheet({ type: btn.sheetType, item: it })}
           className={cn(
-            'shrink-0 mt-1 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold',
-            'bg-amber-500/15 text-amber-700 dark:text-amber-400 hover:bg-amber-500/25 transition-colors',
+            'shrink-0 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors',
+            btn.className,
           )}
-          title="Registrar secagem agora"
         >
-          <Play className="size-3 fill-current" />
-          Secar
+          {btn.label}
         </button>
+      )}
+
+      {/* Bezerros incompletos → link direto para editar */}
+      {isIncompleteEdit && (
+        <Link
+          href={`/animals/${it.animalId}`}
+          className="shrink-0 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-muted text-muted-foreground hover:bg-muted/70 transition-colors"
+        >
+          <Edit2 className="size-3" />
+          Editar
+        </Link>
       )}
     </div>
   )
@@ -130,13 +169,7 @@ function ActionCard({
 // ─── Section ─────────────────────────────────────────────
 
 function Section({
-  title,
-  icon: Icon,
-  iconColor,
-  items,
-  emptyMessage,
-  limit = 20,
-  onDryOff,
+  title, icon: Icon, iconColor, items, emptyMessage, limit = 20, onSheet,
 }: {
   title:        string
   icon:         ElementType
@@ -144,7 +177,7 @@ function Section({
   items:        ManagementActionItem[]
   emptyMessage: string
   limit?:       number
-  onDryOff?:    (item: ManagementActionItem) => void
+  onSheet:      (sheet: ActiveSheet) => void
 }) {
   const shown = items.slice(0, limit)
   const rest  = items.length - shown.length
@@ -169,7 +202,7 @@ function Section({
       ) : (
         <div className="divide-y divide-border">
           {shown.map((it) => (
-            <ActionCard key={it.id} it={it} onDryOff={onDryOff} />
+            <ActionCard key={it.id} it={it} onSheet={onSheet} />
           ))}
           {rest > 0 && (
             <div className="pt-2 pb-1 text-center">
@@ -184,7 +217,7 @@ function Section({
   )
 }
 
-// ─── Cards de resumo ──────────────────────────────────────
+// ─── SummaryCard ─────────────────────────────────────────
 
 function SummaryCard({
   label, value, color, href,
@@ -207,15 +240,10 @@ function SummaryCard({
 
 export function ManagementTodayClient({ overview }: { overview: ManagementOverview }) {
   const { summary, sections } = overview
-
-  // Estado do sheet de secagem
-  const [dryOffItem, setDryOffItem] = useState<ManagementActionItem | null>(null)
+  const [activeSheet, setActiveSheet] = useState<ActiveSheet>(null)
 
   const today     = new Date()
-  const dateLabel = today.toLocaleDateString('pt-BR', {
-    weekday: 'long', day: 'numeric', month: 'long',
-  })
-  const dateFormatted = dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1)
+  const dateLabel = today.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
 
   return (
     <>
@@ -230,107 +258,47 @@ export function ManagementTodayClient({ overview }: { overview: ManagementOvervi
           <SummaryCard label="Alertas pendentes"    value={summary.pendingAlerts}    color="text-orange-500" href="/alerts" />
         </div>
 
-        {/* Nenhuma ação pendente */}
         {summary.totalActions === 0 && (
           <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-6 text-center space-y-2">
             <CheckCircle2 className="size-10 mx-auto text-emerald-500" />
-            <p className="font-medium text-emerald-600 dark:text-emerald-400">
-              Nenhuma ação pendente para hoje
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Todos os cadastros e indicadores veterinários estão em dia.
-            </p>
+            <p className="font-medium text-emerald-600 dark:text-emerald-400">Nenhuma ação pendente para hoje</p>
+            <p className="text-xs text-muted-foreground">Todos os cadastros e indicadores veterinários estão em dia.</p>
           </div>
         )}
 
-        {/* ── Ações Críticas ──────────────────────────── */}
         {sections.critical.length > 0 && (
-          <Section
-            title="Ações Críticas"
-            icon={AlertTriangle}
-            iconColor="bg-red-500"
-            items={sections.critical}
-            emptyMessage="Nenhuma ação crítica no momento."
-            onDryOff={setDryOffItem}
-          />
+          <Section title="Ações Críticas" icon={AlertTriangle} iconColor="bg-red-500"
+            items={sections.critical} emptyMessage="Nenhuma ação crítica." onSheet={setActiveSheet} />
         )}
 
-        {/* ── Partos e Amojadas ───────────────────────── */}
-        <Section
-          title="Partos e Amojadas"
-          icon={Baby}
-          iconColor="bg-violet-500"
-          items={sections.calving}
-          emptyMessage="Nenhuma vaca com parto próximo no momento."
-        />
+        <Section title="Partos e Amojadas" icon={Baby} iconColor="bg-violet-500"
+          items={sections.calving} emptyMessage="Nenhuma vaca com parto próximo." onSheet={setActiveSheet} />
 
-        {/* ── Vacas a Secar ───────────────────────────── */}
-        <Section
-          title="Vacas a Secar"
-          icon={Droplets}
-          iconColor="bg-amber-500"
-          items={sections.dryOff}
-          emptyMessage="Nenhuma vaca marcada para secagem no momento."
-          onDryOff={setDryOffItem}
-        />
+        <Section title="Vacas a Secar" icon={Droplets} iconColor="bg-amber-500"
+          items={sections.dryOff} emptyMessage="Nenhuma vaca para secar." onSheet={setActiveSheet} />
 
-        {/* ── Reprodução ──────────────────────────────── */}
-        <Section
-          title="Reprodução"
-          icon={Heart}
-          iconColor="bg-pink-500"
-          items={sections.reproduction}
-          emptyMessage="Nenhuma ação reprodutiva pendente."
-        />
+        <Section title="Reprodução" icon={Heart} iconColor="bg-pink-500"
+          items={sections.reproduction} emptyMessage="Nenhuma ação reprodutiva." onSheet={setActiveSheet} />
 
-        {/* ── Saúde ───────────────────────────────────── */}
         {sections.health.length > 0 && (
-          <Section
-            title="Saúde e CCS"
-            icon={Stethoscope}
-            iconColor="bg-rose-500"
-            items={sections.health}
-            emptyMessage="Nenhum acompanhamento de saúde pendente."
-          />
+          <Section title="Saúde e CCS" icon={Stethoscope} iconColor="bg-rose-500"
+            items={sections.health} emptyMessage="Nenhum acompanhamento." onSheet={setActiveSheet} />
         )}
 
-        {/* ── Bezerros e Cadastros Incompletos ────────── */}
-        <Section
-          title="Bezerros e Cadastros Incompletos"
-          icon={Baby}
-          iconColor="bg-green-600"
-          items={sections.calves}
-          emptyMessage="Todos os cadastros principais estão completos."
-        />
+        <Section title="Bezerros e Cadastros Incompletos" icon={Baby} iconColor="bg-green-600"
+          items={sections.calves} emptyMessage="Cadastros completos." onSheet={setActiveSheet} />
 
-        {/* ── Cadastro (sem foto / sem lote) ──────────── */}
         {sections.registration.length > 0 && (
-          <Section
-            title="Cadastro Incompleto"
-            icon={Camera}
-            iconColor="bg-zinc-500"
-            items={sections.registration}
-            emptyMessage="Todos os animais têm foto e lote."
-            limit={15}
-          />
+          <Section title="Cadastro Incompleto" icon={Layers2} iconColor="bg-zinc-500"
+            items={sections.registration} emptyMessage="Todos com foto e lote." limit={15} onSheet={setActiveSheet} />
         )}
 
-        {/* ── Alertas Pendentes ────────────────────────── */}
-        <Section
-          title="Alertas Pendentes"
-          icon={Bell}
-          iconColor="bg-orange-500"
-          items={sections.alerts}
-          emptyMessage="Nenhum alerta pendente."
-        />
+        <Section title="Alertas Pendentes" icon={Bell} iconColor="bg-orange-500"
+          items={sections.alerts} emptyMessage="Nenhum alerta." onSheet={setActiveSheet} />
 
-        {/* Link para alertas completo */}
         {summary.pendingAlerts > 0 && (
           <div className="text-center">
-            <Link
-              href="/alerts"
-              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-            >
+            <Link href="/alerts" className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
               <Bell className="size-3.5" />
               Ver todos os alertas
               <ChevronRight className="size-3.5" />
@@ -339,13 +307,27 @@ export function ManagementTodayClient({ overview }: { overview: ManagementOvervi
         )}
       </div>
 
-      {/* ── Sheet de secagem ────────────────────────────── */}
+      {/* ── Sheets ───────────────────────────────────────── */}
       <DryOffSheet
-        open={!!dryOffItem}
-        onClose={() => setDryOffItem(null)}
-        animalId={dryOffItem?.animalId ?? ''}
-        animalTag={dryOffItem?.animalTag ?? ''}
-        animalName={dryOffItem?.animalName ?? null}
+        open={activeSheet?.type === 'DRY_OFF'}
+        onClose={() => setActiveSheet(null)}
+        animalId={activeSheet?.type === 'DRY_OFF'   ? activeSheet.item.animalId   : ''}
+        animalTag={activeSheet?.type === 'DRY_OFF'  ? activeSheet.item.animalTag  : ''}
+        animalName={activeSheet?.type === 'DRY_OFF' ? activeSheet.item.animalName : null}
+      />
+      <ManagementCalvingSheet
+        open={activeSheet?.type === 'CALVING'}
+        onClose={() => setActiveSheet(null)}
+        animalId={activeSheet?.type === 'CALVING'   ? activeSheet.item.animalId   : ''}
+        animalTag={activeSheet?.type === 'CALVING'  ? activeSheet.item.animalTag  : ''}
+        animalName={activeSheet?.type === 'CALVING' ? activeSheet.item.animalName : null}
+      />
+      <ManagementLotSheet
+        open={activeSheet?.type === 'LOT'}
+        onClose={() => setActiveSheet(null)}
+        animalId={activeSheet?.type === 'LOT'   ? activeSheet.item.animalId   : ''}
+        animalTag={activeSheet?.type === 'LOT'  ? activeSheet.item.animalTag  : ''}
+        animalName={activeSheet?.type === 'LOT' ? activeSheet.item.animalName : null}
       />
     </>
   )
