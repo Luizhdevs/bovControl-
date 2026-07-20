@@ -3,6 +3,7 @@ import { twMerge } from 'tailwind-merge'
 import {
   format,
   formatDistanceToNow,
+  differenceInDays,
   differenceInMonths,
   differenceInYears,
 } from 'date-fns'
@@ -38,12 +39,32 @@ export function formatMonth(date: Date | string | null | undefined): string {
 
 export function calculateAge(birthDate: Date | string | null | undefined): string {
   if (!birthDate) return '—'
-  const date = new Date(birthDate)
-  const years = differenceInYears(new Date(), date)
-  if (years >= 1) return `${years} ${years === 1 ? 'ano' : 'anos'}`
-  const months = differenceInMonths(new Date(), date)
-  if (months >= 1) return `${months} ${months === 1 ? 'mês' : 'meses'}`
-  return '< 1 mês'
+  const date  = new Date(birthDate)
+  const today = new Date()
+
+  const years = differenceInYears(today, date)
+  if (years >= 2) {
+    // 2 anos ou mais: exibe anos + meses restantes
+    const afterYears = new Date(date)
+    afterYears.setFullYear(afterYears.getFullYear() + years)
+    const remMonths = differenceInMonths(today, afterYears)
+    if (remMonths > 0) return `${years} ${years === 1 ? 'ano' : 'anos'} e ${remMonths} ${remMonths === 1 ? 'mês' : 'meses'}`
+    return `${years} ${years === 1 ? 'ano' : 'anos'}`
+  }
+
+  const totalMonths = differenceInMonths(today, date)
+  if (totalMonths >= 1) {
+    // Meses completos + dias restantes
+    const afterMonths = new Date(date)
+    afterMonths.setMonth(afterMonths.getMonth() + totalMonths)
+    const remDays = differenceInDays(today, afterMonths)
+    if (remDays > 0) return `${totalMonths} ${totalMonths === 1 ? 'mês' : 'meses'} e ${remDays} ${remDays === 1 ? 'dia' : 'dias'}`
+    return `${totalMonths} ${totalMonths === 1 ? 'mês' : 'meses'}`
+  }
+
+  // Menos de 1 mês: só dias
+  const days = differenceInDays(today, date)
+  return `${days} ${days === 1 ? 'dia' : 'dias'}`
 }
 
 // ─── Formatadores de valor ─────────────────────────────────
