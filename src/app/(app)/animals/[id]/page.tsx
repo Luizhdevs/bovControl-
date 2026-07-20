@@ -16,6 +16,7 @@ import { AuditTimeline }                           from '@/modules/audit/compone
 import { AnimalFeedSection }                       from '@/modules/feed/components/animal-feed-section'
 import { HealthEventTimeline }                     from '@/modules/health-events/components/health-event-timeline'
 import { AnimalQuickActions, AddPhotoButton }  from '@/modules/animals/components/animal-quick-actions'
+import { AnimalNextActionsSection }            from '@/modules/animals/components/animal-next-actions'
 import { ReactivateAnimalButton }              from '@/modules/animals/components/animal-status-actions'
 import { AnimalTimeline }      from '@/modules/animals/components/animal-timeline'
 import { SectionCard, InfoRow, InfoRows } from '@/components/shared/section-card'
@@ -482,48 +483,12 @@ export default async function AnimalDetailPage({
       </SectionCard>
 
       {/* ── PRÓXIMAS AÇÕES ───────────────────────────── */}
-      <SectionCard
-        title="Próximas Ações"
-        subtitle={
-          nextActions.length > 0
-            ? `${nextActions.length} item${nextActions.length !== 1 ? 'ns' : ''} pendente${nextActions.length !== 1 ? 's' : ''}`
-            : undefined
-        }
-      >
-        {nextActions.length === 0 ? (
-          <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
-            <CheckCircle2 className="size-4 shrink-0" />
-            <span>Nenhuma ação pendente para este animal</span>
-          </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {nextActions.map((action, i) => (
-              <div key={i} className="py-2.5 first:pt-0 last:pb-0 flex items-start gap-3">
-                <span className={cn(
-                  'shrink-0 mt-0.5 text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5',
-                  action.priority === 'HIGH'
-                    ? 'bg-red-500/10 text-red-600 dark:text-red-400'
-                    : action.priority === 'MEDIUM'
-                    ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                    : 'bg-zinc-500/10 text-zinc-500',
-                )}>
-                  {action.priority === 'HIGH' ? 'Alta' : action.priority === 'MEDIUM' ? 'Média' : 'Baixa'}
-                </span>
-                <div className="flex-1 min-w-0">
-                  {action.link ? (
-                    <Link href={action.link} className="text-sm font-medium text-primary hover:underline">
-                      {action.title}
-                    </Link>
-                  ) : (
-                    <p className="text-sm font-medium">{action.title}</p>
-                  )}
-                  <p className="text-xs text-muted-foreground mt-0.5">{action.reason}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </SectionCard>
+      <AnimalNextActionsSection
+        actions={nextActions}
+        animalId={animal.id}
+        animalTag={animal.tag}
+        animalName={animal.name ?? null}
+      />
 
       {/* ── FOTOS / LINHA DO TEMPO ───────────────────── */}
       <SectionCard

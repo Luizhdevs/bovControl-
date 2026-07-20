@@ -75,11 +75,14 @@ export function getAnimalCompletenessStatus(
 
 // ─── Próximas ações ───────────────────────────────────────
 
+export type NextActionType = 'DRY_OFF' | 'CALVING_REGISTER'
+
 export interface NextAction {
   title:    string
   reason:   string
   priority: 'HIGH' | 'MEDIUM' | 'LOW'
   link?:    string
+  type?:    NextActionType  // ações que abrem formulário inline
 }
 
 export type VetSnapshotForActions = Pick<
@@ -101,6 +104,7 @@ export function getNextActions(
   today        = new Date(),
 ): NextAction[] {
   const actions: NextAction[] = []
+  const alreadyDry = animal.milkStatus === 'DRY' || animal.milkStatus === 'DRY_PREGNANT'
 
   if (vetSnapshot) {
     const { reportGroup, expectedCalvingDate, mastitisDays, ccsThousand, discardRecommendation } = vetSnapshot
@@ -131,11 +135,13 @@ export function getNextActions(
       }
     }
 
-    if (reportGroup === 'TO_DRY') {
+    // Só exibe "secar" se a vaca ainda não foi secada manualmente
+    if (reportGroup === 'TO_DRY' && !alreadyDry) {
       actions.push({
         title:    'Secar vaca',
         reason:   'Recomendado secar neste ciclo',
         priority: 'HIGH',
+        type:     'DRY_OFF',
       })
     }
 
