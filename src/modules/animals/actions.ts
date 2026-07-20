@@ -928,7 +928,7 @@ export async function registerDryOff(
 
     await requireFarmAccess(session.user.id, farmId, 'MANAGER')
 
-    const { animalId, driedOffAt, notes } = parsed.data
+    const { animalId, driedOffAt, notes, lotId } = parsed.data
 
     const animal = await prisma.animal.findFirst({
       where:  { id: animalId, farmId },
@@ -942,27 +942,57 @@ export async function registerDryOff(
       return { success: false, error: 'Apenas vacas e novilhas podem ser secas' }
     }
 
-    const [healthEvent] = await prisma.$transaction([
-      prisma.healthEvent.create({
+    // Valida lote de destino se fornecido
+    if (lotId) {
+      const lot = await prisma.lot.findFirst({ where: { id: lotId, farmId, isActive: true }, select: { id: true } })
+      if (!lot) return { success: false, error: 'Lote não encontrado' }
+    }
+
+    const healthEventId = await prisma.$transaction(async (tx) => {
+      // 1. Registra evento de secagem no histórico de saúde
+      const he = await tx.healthEvent.create({
         data: {
           animalId,
           type:        'OTHER',
           description: 'Secagem',
           occurredAt:  driedOffAt,
+          resolved:    true,
           notes:       notes ?? null,
         },
         select: { id: true },
-      }),
-      prisma.animal.update({
+      })
+
+      // 2. Atualiza milkStatus + lote (se informado)
+      await tx.animal.update({
         where: { id: animalId },
-        data:  { milkStatus: 'DRY' },
-      }),
-      // Resolve alertas de secagem pendentes
-      prisma.alert.updateMany({
+        data: {
+          milkStatus: 'DRY',
+          ...(lotId != null ? { lotId } : {}),
+        },
+      })
+
+      // 3. Atualiza o snapshot vet mais recente de TO_DRY → DRY_EMPTY
+      //    para que o badge "A secar" desapareça imediatamente
+      const latestToDrySnap = await tx.veterinaryAnimalSnapshot.findFirst({
+        where:   { animalId, reportGroup: 'TO_DRY' },
+        orderBy: { createdAt: 'desc' },
+        select:  { id: true },
+      })
+      if (latestToDrySnap) {
+        await tx.veterinaryAnimalSnapshot.update({
+          where: { id: latestToDrySnap.id },
+          data:  { reportGroup: 'DRY_EMPTY' },
+        })
+      }
+
+      // 4. Resolve alertas de secagem pendentes
+      await tx.alert.updateMany({
         where: { animalId, farmId, type: { in: ['DRY_OFF', 'DRY_OFF_DUE'] }, status: 'PENDING' },
         data:  { status: 'RESOLVED', resolvedAt: new Date() },
-      }),
-    ])
+      })
+
+      return he.id
+    })
 
     auditLog({
       farmId,
@@ -970,7 +1000,7 @@ export async function registerDryOff(
       action:   'UPDATE',
       entity:   'Animal',
       entityId: animalId,
-      after: { milkStatus: 'DRY', driedOffAt, healthEventId: healthEvent.id },
+      after: { milkStatus: 'DRY', driedOffAt, healthEventId, lotId: lotId ?? null },
       metadata: { event: 'DRY_OFF_REGISTERED', animalTag: animal.tag, notes: notes ?? null },
     })
 
@@ -983,4 +1013,18 @@ export async function registerDryOff(
     console.error('[registerDryOff]', error)
     return { success: false, error: 'Erro ao registrar secagem. Tente novamente.' }
   }
+}
+
+// ─── Lotes disponíveis (server action lazy) ────────────────
+
+export async function getLotsForDryOff(): Promise<{ id: string; name: string; type: string }[]> {
+  const session = await auth()
+  if (!session) return []
+  const activeFarm = await getActiveFarm(session.user.id)
+  if (!activeFarm) return []
+  return prisma.lot.findMany({
+    where:   { farmId: activeFarm.farmId, isActive: true },
+    select:  { id: true, name: true, type: true },
+    orderBy: { name: 'asc' },
+  })
 }

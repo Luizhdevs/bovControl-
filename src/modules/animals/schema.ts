@@ -180,6 +180,7 @@ export const dryOffSchema = z.object({
   animalId:   z.string().cuid('ID inválido'),
   driedOffAt: z.coerce.date({ required_error: 'Informe a data de secagem' }),
   notes:      z.string().trim().max(300).optional(),
+  lotId:      z.string().cuid().optional().nullable(),
 })
 
 export type DryOffInput = z.infer<typeof dryOffSchema>
