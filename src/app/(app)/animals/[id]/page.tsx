@@ -631,11 +631,19 @@ export default async function AnimalDetailPage({
           }
         >
           <div className="space-y-3">
-            {/* Grupo + status calculado + data */}
+            {/* Grupo + status calculado + data
+                Se o animal já foi secado manualmente (milkStatus DRY/DRY_PREGNANT)
+                mas o snapshot ainda mostra TO_DRY (legado pré-fix), exibimos DRY_EMPTY. */}
+            {(() => {
+              const alreadyDry = animal.milkStatus === 'DRY' || animal.milkStatus === 'DRY_PREGNANT'
+              const effectiveGroup = (alreadyDry && vetSnapshot.reportGroup === 'TO_DRY')
+                ? 'DRY_EMPTY' as const
+                : vetSnapshot.reportGroup
+              return (
             <div className="flex items-center gap-2 flex-wrap">
-              <VeterinaryGroupBadge group={vetSnapshot.reportGroup} />
+              <VeterinaryGroupBadge group={effectiveGroup} />
               <span className="text-xs font-medium text-muted-foreground bg-muted rounded-full px-2 py-0.5">
-                {getVetStatusLabel(vetSnapshot.reportGroup)}
+                {getVetStatusLabel(effectiveGroup)}
               </span>
               <span className="text-xs text-muted-foreground">
                 {vetSnapshot.report?.reportDate
@@ -648,6 +656,8 @@ export default async function AnimalDetailPage({
                 </span>
               )}
             </div>
+              )
+            })()}
 
             {/* Dias para parto — destaque */}
             {calvingDays !== null && (
