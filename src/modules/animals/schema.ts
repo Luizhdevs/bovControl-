@@ -173,3 +173,13 @@ export const calvingSchema = z.object({
 })
 
 export type CalvingInput = z.infer<typeof calvingSchema>
+
+// ─── Registrar Secagem ─────────────────────────────────────
+
+export const dryOffSchema = z.object({
+  animalId:   z.string().cuid('ID inválido'),
+  driedOffAt: z.coerce.date({ required_error: 'Informe a data de secagem' }),
+  notes:      z.string().trim().max(300).optional(),
+})
+
+export type DryOffInput = z.infer<typeof dryOffSchema>

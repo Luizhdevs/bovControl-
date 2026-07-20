@@ -9,18 +9,19 @@ import type {
 // ─── Animal na listagem (projetado — sem dados pesados) ────
 
 export type AnimalListItem = {
-  id:           string
-  tag:          string
-  name:         string | null
-  sex:          Animal['sex']
-  category:     Animal['category']
-  status:       Animal['status']
-  purpose:      Animal['purpose']
-  breed:        string
-  birthDate:    Date | null
-  lot:          Pick<Lot, 'id' | 'name' | 'type'> | null
-  primaryPhoto: Pick<AnimalPhoto, 'url' | 'thumbnailUrl'> | null
-  _count:       { photos: number }
+  id:                     string
+  tag:                    string
+  name:                   string | null
+  sex:                    Animal['sex']
+  category:               Animal['category']
+  status:                 Animal['status']
+  purpose:                Animal['purpose']
+  breed:                  string
+  birthDate:               Date | null
+  lastVeterinaryReportAt?: Date | null
+  lot:                    Pick<Lot, 'id' | 'name' | 'type'> | null
+  primaryPhoto:           Pick<AnimalPhoto, 'url' | 'thumbnailUrl'> | null
+  _count:                 { photos: number }
 }
 
 // ─── Animal completo com relações ─────────────────────────

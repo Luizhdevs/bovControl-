@@ -35,7 +35,7 @@ function originOf(
 
 function item(
   id:           string,
-  animal:       { id: string; tag: string; name: string | null; externalCode: string | null; category: string; lotName: string | null; photoUrl: string | null },
+  animal:       { id: string; tag: string; name: string | null; externalCode: string | null; category: string; lotName: string | null; photoUrl: string | null; milkStatus: string | null },
   origin:       ManagementActionItem['origin'],
   type:         ManagementActionType,
   priority:     ManagementPriority,
@@ -54,6 +54,7 @@ function item(
     category:    animal.category,
     lotName:     animal.lotName,
     photoUrl:    animal.photoUrl,
+    milkStatus:  animal.milkStatus,
     title,
     reason,
     priority,
@@ -92,6 +93,7 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
         motherId:        true,
         birthDate:       true,
         lastCalvingDate: true,
+        milkStatus:      true,
         lot:             { select: { name: true } },
         photos:          { where: { isPrimary: true }, select: { url: true }, take: 1 },
         _count:          { select: { photos: true, reproductions: true } },
@@ -197,7 +199,7 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
     const origin   = originOf(a.externalCode, hasSnap)
     const photoUrl = a.photos[0]?.url ?? null
     const lotName  = a.lot?.name ?? null
-    const base     = { id: a.id, tag: a.tag, name: a.name, externalCode: a.externalCode, category: a.category, lotName, photoUrl }
+    const base     = { id: a.id, tag: a.tag, name: a.name, externalCode: a.externalCode, category: a.category, lotName, photoUrl, milkStatus: a.milkStatus }
 
     if (snap) {
       const { reportGroup, expectedCalvingDate, mastitisDays, ccsThousand, discardRecommendation } = snap
@@ -263,10 +265,11 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
       }
 
       // ── A secar ────────────────────────────────────────────
-      // Suprime se a vaca já pariu recentemente (ela já secou e pariu — status vet desatualizado)
+      // Suprime se a vaca já pariu recentemente OU já foi secada manualmente
       const calvedInLast90d = lastCalvMs !== null &&
         lastCalvMs >= today.getTime() - 90 * DAY_MS
-      if (reportGroup === 'TO_DRY' && !calvedInLast90d) {
+      const alreadyDry = a.milkStatus === 'DRY' || a.milkStatus === 'DRY_PREGNANT'
+      if (reportGroup === 'TO_DRY' && !calvedInLast90d && !alreadyDry) {
         const it = item(`${a.id}-dry`, base, origin,
           'DRY_OFF_DUE', 'HIGH',
           'Secar vaca',
@@ -376,6 +379,7 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
     category:     null,
     lotName:      null,
     photoUrl:     null,
+    milkStatus:   null,
     title:        al.title,
     reason:       al.description ?? al.title,
     priority:     al.priority as ManagementPriority,

@@ -31,6 +31,7 @@ import {
   markAnimalAsTransferredSchema,
   reactivateAnimalSchema,
   calvingSchema,
+  dryOffSchema,
 } from './schema'
 import type { ActionResult } from './types'
 
@@ -904,5 +905,82 @@ export async function registerCalving(
   } catch (error) {
     console.error('[registerCalving]', error)
     return { success: false, error: 'Erro ao registrar parto. Tente novamente.' }
+  }
+}
+
+// ─── Registrar Secagem ─────────────────────────────────────
+
+export async function registerDryOff(
+  rawData: unknown,
+): Promise<ActionResult> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado' }
+
+    const parsed = dryOffSchema.safeParse(rawData)
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.errors[0]!.message }
+    }
+
+    const activeFarm = await getActiveFarm(session.user.id)
+    if (!activeFarm) return { success: false, error: 'Fazenda não encontrada' }
+    const { farmId } = activeFarm
+
+    await requireFarmAccess(session.user.id, farmId, 'MANAGER')
+
+    const { animalId, driedOffAt, notes } = parsed.data
+
+    const animal = await prisma.animal.findFirst({
+      where:  { id: animalId, farmId },
+      select: { id: true, tag: true, sex: true, category: true, status: true, milkStatus: true },
+    })
+
+    if (!animal)                   return { success: false, error: 'Animal não encontrado' }
+    if (animal.status !== 'ACTIVE') return { success: false, error: 'Animal não está ativo' }
+    if (animal.sex !== 'FEMALE')   return { success: false, error: 'Apenas fêmeas podem ser secas' }
+    if (!['COW', 'HEIFER'].includes(animal.category)) {
+      return { success: false, error: 'Apenas vacas e novilhas podem ser secas' }
+    }
+
+    const [healthEvent] = await prisma.$transaction([
+      prisma.healthEvent.create({
+        data: {
+          animalId,
+          type:        'OTHER',
+          description: 'Secagem',
+          occurredAt:  driedOffAt,
+          notes:       notes ?? null,
+        },
+        select: { id: true },
+      }),
+      prisma.animal.update({
+        where: { id: animalId },
+        data:  { milkStatus: 'DRY' },
+      }),
+      // Resolve alertas de secagem pendentes
+      prisma.alert.updateMany({
+        where: { animalId, farmId, type: { in: ['DRY_OFF', 'DRY_OFF_DUE'] }, status: 'PENDING' },
+        data:  { status: 'RESOLVED', resolvedAt: new Date() },
+      }),
+    ])
+
+    auditLog({
+      farmId,
+      userId:   session.user.id,
+      action:   'UPDATE',
+      entity:   'Animal',
+      entityId: animalId,
+      after: { milkStatus: 'DRY', driedOffAt, healthEventId: healthEvent.id },
+      metadata: { event: 'DRY_OFF_REGISTERED', animalTag: animal.tag, notes: notes ?? null },
+    })
+
+    revalidatePath('/animals')
+    revalidatePath(`/animals/${animalId}`)
+    revalidatePath('/management/today')
+
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[registerDryOff]', error)
+    return { success: false, error: 'Erro ao registrar secagem. Tente novamente.' }
   }
 }

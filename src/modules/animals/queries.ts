@@ -72,15 +72,16 @@ function buildAnimalWhere(
 }
 
 const ANIMAL_LIST_SELECT = {
-  id:        true,
-  tag:       true,
-  name:      true,
-  sex:       true,
-  category:  true,
-  status:    true,
-  purpose:   true,
-  breed:     true,
-  birthDate: true,
+  id:                     true,
+  tag:                    true,
+  name:                   true,
+  sex:                    true,
+  category:               true,
+  status:                 true,
+  purpose:                true,
+  breed:                  true,
+  birthDate:              true,
+  lastVeterinaryReportAt: true,
   lot: {
     select: {
       id:       true,

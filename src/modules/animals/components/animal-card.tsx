@@ -3,8 +3,8 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { Badge } from '@/components/ui/badge'
-import { cn, calculateAge, CATEGORY_LABELS, LOT_TYPE_LABELS } from '@/lib/utils'
-import { MilkIcon, BeefIcon, Layers2Icon, Check } from 'lucide-react'
+import { cn, calculateAge, formatDate, CATEGORY_LABELS, LOT_TYPE_LABELS } from '@/lib/utils'
+import { MilkIcon, BeefIcon, Layers2Icon, Check, Stethoscope } from 'lucide-react'
 import type { AnimalListItem } from '../types'
 
 // ─── Constantes ────────────────────────────────────────────
@@ -166,6 +166,15 @@ export function AnimalCard({ animal, isSelected = false, onSelect, showCheckbox 
                   <span className={cn('text-xs truncate', lotColor)}>{animal.lot.name}</span>
                 </>
               )}
+              {animal.lastVeterinaryReportAt && (
+                <>
+                  <span className="text-muted-foreground/40 text-xs">·</span>
+                  <span className="inline-flex items-center gap-0.5 text-xs text-cyan-500/80">
+                    <Stethoscope className="size-3" />
+                    {formatDate(animal.lastVeterinaryReportAt)}
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
@@ -214,9 +223,17 @@ export function AnimalCard({ animal, isSelected = false, onSelect, showCheckbox 
 
           <span className="text-xs text-muted-foreground truncate">{animal.breed}</span>
 
-          <span className={cn('text-xs truncate', animal.lot ? lotColor : 'text-muted-foreground/40')}>
-            {animal.lot?.name ?? '—'}
-          </span>
+          <div className="min-w-0">
+            <span className={cn('text-xs truncate block', animal.lot ? lotColor : 'text-muted-foreground/40')}>
+              {animal.lot?.name ?? '—'}
+            </span>
+            {animal.lastVeterinaryReportAt && (
+              <span className="inline-flex items-center gap-0.5 text-[10px] text-cyan-500/80 mt-0.5">
+                <Stethoscope className="size-2.5" />
+                {formatDate(animal.lastVeterinaryReportAt)}
+              </span>
+            )}
+          </div>
 
           <PurposeIcon className="size-4 text-muted-foreground/40 justify-self-end" />
         </Link>

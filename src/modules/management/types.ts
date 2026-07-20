@@ -32,6 +32,7 @@ export interface ManagementActionItem {
   category:     string | null
   lotName:      string | null
   photoUrl:     string | null
+  milkStatus:   string | null
   title:        string
   reason:       string
   priority:     ManagementPriority

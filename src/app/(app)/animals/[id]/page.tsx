@@ -375,6 +375,38 @@ export default async function AnimalDetailPage({
             />
           )}
 
+          {/* Última avaliação veterinária */}
+          {animal.lastVeterinaryReportAt && (
+            <InfoRow
+              label="Última avaliação vet."
+              value={
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-600 dark:text-cyan-400">
+                  <Stethoscope className="size-3.5" />
+                  {formatDate(animal.lastVeterinaryReportAt)}
+                </span>
+              }
+            />
+          )}
+
+          {/* Status de lactação */}
+          {(animal.milkStatus === 'LACTATING' || animal.milkStatus === 'DRY' || animal.milkStatus === 'DRY_PREGNANT') && (
+            <InfoRow
+              label="Status de leite"
+              value={
+                <span className={cn(
+                  'inline-flex items-center gap-1.5 text-xs font-semibold rounded-full px-2.5 py-0.5',
+                  animal.milkStatus === 'LACTATING'    && 'bg-purple-500/15 text-purple-600 dark:text-purple-400',
+                  animal.milkStatus === 'DRY'          && 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+                  animal.milkStatus === 'DRY_PREGNANT' && 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+                )}>
+                  {animal.milkStatus === 'LACTATING'    && <><Droplets className="size-3" /> Em lactação</>}
+                  {animal.milkStatus === 'DRY'          && <><Droplets className="size-3" /> Seca</>}
+                  {animal.milkStatus === 'DRY_PREGNANT' && <><Droplets className="size-3" /> Seca gestante</>}
+                </span>
+              }
+            />
+          )}
+
           {/* Lote */}
           <InfoRow
             label="Lote"

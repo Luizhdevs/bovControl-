@@ -41,10 +41,11 @@ export type AnimalInLot = {
   status:       Animal['status']
   purpose:      Animal['purpose']
   breed:        string
-  birthDate:    Date | null
-  lot:          Pick<Lot, 'id' | 'name' | 'type'> | null
-  primaryPhoto: Pick<AnimalPhoto, 'url' | 'thumbnailUrl'> | null
-  _count:       { photos: number }
+  birthDate:               Date | null
+  lastVeterinaryReportAt?: Date | null
+  lot:                     Pick<Lot, 'id' | 'name' | 'type'> | null
+  primaryPhoto:            Pick<AnimalPhoto, 'url' | 'thumbnailUrl'> | null
+  _count:                  { photos: number }
 }
 
 // ─── Lote completo com relações ────────────────────────────
