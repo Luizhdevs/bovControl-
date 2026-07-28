@@ -139,7 +139,17 @@ export default async function AnimalDetailPage({
     animal.maternalChildren.length,
   ) || null
 
-  // calvingDays: suprime "Parto vencido" se qualquer fonte mostra parto recente
+  // effectiveVetGroup: se já foi secada manualmente mas snapshot ainda é TO_DRY (legado),
+  // ou se houve aborto e snapshot virou DRY_EMPTY/EMPTY_LATE, usamos o grupo real.
+  const effectiveVetGroup = (() => {
+    if (!vetSnapshot) return null
+    const alreadyDry = animal.milkStatus === 'DRY' || animal.milkStatus === 'DRY_PREGNANT'
+    if (alreadyDry && vetSnapshot.reportGroup === 'TO_DRY') return 'DRY_EMPTY' as const
+    return vetSnapshot.reportGroup
+  })()
+
+  // calvingDays: suprime se parto recente registrado OU se grupo indica animal não gestante
+  const NON_PREGNANT_GROUPS = new Set(['DRY_EMPTY', 'EMPTY_LATE', 'EMPTY_NORMAL_45D', 'TO_DRY'])
   const rawCalvingDays = vetSnapshot ? daysToCalving(vetSnapshot.expectedCalvingDate) : null
   const expectedCalvingMs = vetSnapshot?.expectedCalvingDate
     ? new Date(vetSnapshot.expectedCalvingDate).getTime()
@@ -148,7 +158,8 @@ export default async function AnimalDetailPage({
     expectedCalvingMs != null &&
     effectiveLastCalving != null &&
     effectiveLastCalving.getTime() >= expectedCalvingMs - 14 * 24 * 60 * 60 * 1000
-  const calvingDays = hasCalvedSinceExpected ? null : rawCalvingDays
+  const isNotPregnantByGroup = effectiveVetGroup != null && NON_PREGNANT_GROUPS.has(effectiveVetGroup)
+  const calvingDays = (hasCalvedSinceExpected || isNotPregnantByGroup) ? null : rawCalvingDays
 
   const sexColor  = animal.sex === 'FEMALE' ? 'from-pink-500/20 to-purple-600/20' : 'from-sky-500/20 to-blue-600/20'
   const sexAccent = animal.sex === 'FEMALE' ? 'bg-pink-500' : 'bg-sky-500'
@@ -633,19 +644,11 @@ export default async function AnimalDetailPage({
           }
         >
           <div className="space-y-3">
-            {/* Grupo + status calculado + data
-                Se o animal já foi secado manualmente (milkStatus DRY/DRY_PREGNANT)
-                mas o snapshot ainda mostra TO_DRY (legado pré-fix), exibimos DRY_EMPTY. */}
-            {(() => {
-              const alreadyDry = animal.milkStatus === 'DRY' || animal.milkStatus === 'DRY_PREGNANT'
-              const effectiveGroup = (alreadyDry && vetSnapshot.reportGroup === 'TO_DRY')
-                ? 'DRY_EMPTY' as const
-                : vetSnapshot.reportGroup
-              return (
+            {effectiveVetGroup && (
             <div className="flex items-center gap-2 flex-wrap">
-              <VeterinaryGroupBadge group={effectiveGroup} />
+              <VeterinaryGroupBadge group={effectiveVetGroup} />
               <span className="text-xs font-medium text-muted-foreground bg-muted rounded-full px-2 py-0.5">
-                {getVetStatusLabel(effectiveGroup)}
+                {getVetStatusLabel(effectiveVetGroup)}
               </span>
               <span className="text-xs text-muted-foreground">
                 {vetSnapshot.report?.reportDate
@@ -658,8 +661,7 @@ export default async function AnimalDetailPage({
                 </span>
               )}
             </div>
-              )
-            })()}
+            )}
 
             {/* Dias para parto — destaque */}
             {calvingDays !== null && (
