@@ -96,7 +96,7 @@ function Section({ title, children, count }: {
         borderBottom:   '2px solid #111827',
         paddingBottom:  '4px',
       }}>
-        <h2 style={{ fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#111827' }}>
+        <h2 style={{ fontSize: '13px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#111827', margin: 0 }}>
           {title}
         </h2>
         <span style={{ fontSize: '11px', color: '#6b7280' }}>{count} registro{count !== 1 ? 's' : ''}</span>
@@ -108,7 +108,7 @@ function Section({ title, children, count }: {
 
 function EmptyNote() {
   return (
-    <p style={{ fontSize: '12px', color: '#9ca3af', fontStyle: 'italic', padding: '8px 0' }}>
+    <p style={{ fontSize: '12px', color: '#9ca3af', fontStyle: 'italic', padding: '8px 0', margin: 0 }}>
       Nenhum registro neste período.
     </p>
   )
@@ -140,15 +140,11 @@ export default async function PrintReportPage({
   const year  = now.getFullYear()
   const month = now.getMonth() + 1
 
-  const fromStr = sp.from ?? `${year}-${String(month).padStart(2, '0')}-01`
-  const lastDay = new Date(
-    parseInt(fromStr.slice(0, 4)),
-    parseInt(fromStr.slice(5, 7)),
-    0,
-  ).getDate()
+  const fromStr  = sp.from ?? `${year}-${String(month).padStart(2, '0')}-01`
   const monthNum = parseInt(fromStr.slice(5, 7))
   const yearNum  = parseInt(fromStr.slice(0, 4))
-  const toStr   = sp.to ?? `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  const lastDay  = new Date(yearNum, monthNum, 0).getDate()
+  const toStr    = sp.to ?? `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
   const from = new Date(fromStr + 'T00:00:00')
   const to   = new Date(toStr   + 'T23:59:59')
@@ -162,18 +158,23 @@ export default async function PrintReportPage({
 
   return (
     <>
-      {/* Print CSS global */}
+      {/* Esconde sidebar/header/nav ao imprimir */}
       <style dangerouslySetInnerHTML={{ __html: `
-        @page { margin: 15mm 15mm 15mm 15mm; size: A4 portrait; }
-        @media print { .no-print { display: none !important; } }
-        * { box-sizing: border-box; }
-        body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: white; color: #111827; }
+        @page { margin: 15mm; size: A4 portrait; }
+        @media print {
+          header, aside, nav, footer, .no-print { display: none !important; }
+          main { padding: 0 !important; }
+          main > div { padding: 0 !important; max-width: 100% !important; }
+        }
+        @media screen {
+          .print-content { max-width: 900px; margin: 0 auto; }
+        }
       `}} />
 
-      <div style={{ maxWidth: '900px', margin: '0 auto', padding: '24px 20px' }}>
+      <div className="print-content" style={{ fontFamily: 'Arial, Helvetica, sans-serif', color: '#111827', background: 'white', padding: '8px 0' }}>
 
-        {/* Botão imprimir — some no PDF */}
-        <div className="no-print" style={{ marginBottom: '20px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+        {/* Barra de ações — some ao imprimir */}
+        <div className="no-print" style={{ marginBottom: '20px', display: 'flex', gap: '12px', alignItems: 'center' }}>
           <PrintButton />
           <a href="/reports/farm-activity" style={{ fontSize: '13px', color: '#6b7280', textDecoration: 'none' }}>
             ← Voltar
@@ -190,61 +191,39 @@ export default async function PrintReportPage({
           borderBottom:   '3px solid #111827',
         }}>
           <div>
-            <div style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-0.01em' }}>
-              🐄 BovControl
-            </div>
-            <div style={{ fontSize: '15px', fontWeight: 700, marginTop: '4px' }}>
-              Relatório de Movimentação da Fazenda
-            </div>
-            <div style={{ fontSize: '13px', color: '#374151', marginTop: '2px' }}>
-              {report.farmName}
-            </div>
+            <div style={{ fontSize: '20px', fontWeight: 800 }}>🐄 BovControl</div>
+            <div style={{ fontSize: '15px', fontWeight: 700, marginTop: '4px' }}>Relatório de Movimentação da Fazenda</div>
+            <div style={{ fontSize: '13px', color: '#374151', marginTop: '2px' }}>{report.farmName}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: '13px', fontWeight: 600 }}>Período</div>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: '#1d4ed8' }}>
-              {fmtPeriod(from, to)}
-            </div>
-            <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '4px' }}>
-              Emitido em {printedAt}
-            </div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: '#1d4ed8' }}>{fmtPeriod(from, to)}</div>
+            <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '4px' }}>Emitido em {printedAt}</div>
           </div>
         </div>
 
-        {/* Resumo em linha */}
-        <div style={{
-          display:      'grid',
-          gridTemplateColumns: 'repeat(6, 1fr)',
-          gap:          '8px',
-          marginBottom: '28px',
-        }}>
+        {/* Resumo */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '8px', marginBottom: '28px' }}>
           {[
-            { label: 'Partos',           value: report.partos.length     },
-            { label: 'Secagens',         value: report.secagens.length   },
-            { label: 'Abortos',          value: report.abortos.length    },
-            { label: 'Ev. Saúde',        value: report.saude.length      },
-            { label: 'Reprodução',       value: report.reproducao.length },
-            { label: 'Alertas',          value: report.alertas.length    },
+            { label: 'Partos',      value: report.partos.length     },
+            { label: 'Secagens',    value: report.secagens.length   },
+            { label: 'Abortos',     value: report.abortos.length    },
+            { label: 'Ev. Saúde',   value: report.saude.length      },
+            { label: 'Reprodução',  value: report.reproducao.length },
+            { label: 'Alertas',     value: report.alertas.length    },
           ].map(({ label, value }) => (
-            <div key={label} style={{
-              textAlign:     'center',
-              border:        '1px solid #e5e7eb',
-              borderRadius:  '6px',
-              padding:       '8px 4px',
-            }}>
+            <div key={label} style={{ textAlign: 'center', border: '1px solid #e5e7eb', borderRadius: '6px', padding: '8px 4px' }}>
               <div style={{ fontSize: '22px', fontWeight: 800, lineHeight: 1 }}>{value}</div>
               <div style={{ fontSize: '9px', color: '#6b7280', marginTop: '3px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
             </div>
           ))}
         </div>
 
-        {/* ── PARTOS ── */}
+        {/* Partos */}
         <Section title="Partos (Nascimentos)" count={report.partos.length}>
           {report.partos.length === 0 ? <EmptyNote /> : (
             <ReportTable>
-              <thead>
-                <tr><Th>Data</Th><Th>Mãe (Brinco)</Th><Th>Nome da Mãe</Th><Th>Lote</Th><Th>Brinco Bezerro</Th><Th>Nome Bezerro</Th><Th>Sexo</Th></tr>
-              </thead>
+              <thead><tr><Th>Data</Th><Th>Mãe</Th><Th>Nome da Mãe</Th><Th>Lote</Th><Th>Brinco Bezerro</Th><Th>Nome Bezerro</Th><Th>Sexo</Th></tr></thead>
               <tbody>
                 {report.partos.map(p => (
                   <tr key={p.id}>
@@ -262,13 +241,11 @@ export default async function PrintReportPage({
           )}
         </Section>
 
-        {/* ── SECAGENS ── */}
+        {/* Secagens */}
         <Section title="Secagens" count={report.secagens.length}>
           {report.secagens.length === 0 ? <EmptyNote /> : (
             <ReportTable>
-              <thead>
-                <tr><Th>Data</Th><Th>Brinco</Th><Th>Nome</Th><Th>Lote</Th><Th>Observações</Th></tr>
-              </thead>
+              <thead><tr><Th>Data</Th><Th>Brinco</Th><Th>Nome</Th><Th>Lote</Th><Th>Observações</Th></tr></thead>
               <tbody>
                 {report.secagens.map(s => (
                   <tr key={s.id}>
@@ -284,13 +261,11 @@ export default async function PrintReportPage({
           )}
         </Section>
 
-        {/* ── ABORTOS ── */}
+        {/* Abortos */}
         <Section title="Abortos" count={report.abortos.length}>
           {report.abortos.length === 0 ? <EmptyNote /> : (
             <ReportTable>
-              <thead>
-                <tr><Th>Data</Th><Th>Brinco</Th><Th>Nome</Th><Th>Lote</Th><Th>Observações</Th></tr>
-              </thead>
+              <thead><tr><Th>Data</Th><Th>Brinco</Th><Th>Nome</Th><Th>Lote</Th><Th>Observações</Th></tr></thead>
               <tbody>
                 {report.abortos.map(a => (
                   <tr key={a.id}>
@@ -306,13 +281,11 @@ export default async function PrintReportPage({
           )}
         </Section>
 
-        {/* ── REPRODUÇÃO ── */}
+        {/* Reprodução */}
         <Section title="Reprodução (Inseminações e Diagnósticos)" count={report.reproducao.length}>
           {report.reproducao.length === 0 ? <EmptyNote /> : (
             <ReportTable>
-              <thead>
-                <tr><Th>Data</Th><Th>Brinco</Th><Th>Nome</Th><Th>Tipo</Th><Th>Status</Th><Th>Touro / Sêmen</Th><Th>Resultado</Th></tr>
-              </thead>
+              <thead><tr><Th>Data</Th><Th>Brinco</Th><Th>Nome</Th><Th>Tipo</Th><Th>Status</Th><Th>Touro / Sêmen</Th><Th>Resultado</Th></tr></thead>
               <tbody>
                 {report.reproducao.map(r => (
                   <tr key={r.id}>
@@ -330,13 +303,11 @@ export default async function PrintReportPage({
           )}
         </Section>
 
-        {/* ── SAÚDE ── */}
+        {/* Saúde */}
         <Section title="Eventos de Saúde" count={report.saude.length}>
           {report.saude.length === 0 ? <EmptyNote /> : (
             <ReportTable>
-              <thead>
-                <tr><Th>Data</Th><Th>Brinco</Th><Th>Nome</Th><Th>Tipo</Th><Th>Descrição</Th><Th>Medicação</Th><Th>Custo</Th><Th>Situação</Th></tr>
-              </thead>
+              <thead><tr><Th>Data</Th><Th>Brinco</Th><Th>Nome</Th><Th>Tipo</Th><Th>Descrição</Th><Th>Medicação</Th><Th>Custo</Th><Th>Situação</Th></tr></thead>
               <tbody>
                 {report.saude.map(e => (
                   <tr key={e.id}>
@@ -355,13 +326,11 @@ export default async function PrintReportPage({
           )}
         </Section>
 
-        {/* ── ALERTAS ── */}
+        {/* Alertas */}
         <Section title="Alertas do Período" count={report.alertas.length}>
           {report.alertas.length === 0 ? <EmptyNote /> : (
             <ReportTable>
-              <thead>
-                <tr><Th>Data</Th><Th>Brinco</Th><Th>Tipo</Th><Th>Prioridade</Th><Th>Status</Th><Th>Resolvido em</Th></tr>
-              </thead>
+              <thead><tr><Th>Data</Th><Th>Brinco</Th><Th>Tipo</Th><Th>Prioridade</Th><Th>Status</Th><Th>Resolvido em</Th></tr></thead>
               <tbody>
                 {report.alertas.map(a => (
                   <tr key={a.id}>
@@ -379,16 +348,8 @@ export default async function PrintReportPage({
         </Section>
 
         {/* Rodapé */}
-        <div style={{
-          marginTop:    '32px',
-          paddingTop:   '12px',
-          borderTop:    '1px solid #e5e7eb',
-          fontSize:     '10px',
-          color:        '#9ca3af',
-          display:      'flex',
-          justifyContent: 'space-between',
-        }}>
-          <span>BovControl · Relatório de Movimentação da Fazenda</span>
+        <div style={{ marginTop: '32px', paddingTop: '12px', borderTop: '1px solid #e5e7eb', fontSize: '10px', color: '#9ca3af', display: 'flex', justifyContent: 'space-between' }}>
+          <span>BovControl · Relatório de Movimentação</span>
           <span>{report.farmName} · {fmtPeriod(from, to)}</span>
         </div>
       </div>
