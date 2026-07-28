@@ -33,6 +33,7 @@ import {
   calvingSchema,
   dryOffSchema,
   abortionSchema,
+  stillbirthSchema,
 } from './schema'
 import type { ActionResult } from './types'
 
@@ -1146,5 +1147,126 @@ export async function registerAbortion(rawData: unknown): Promise<ActionResult> 
   } catch (error) {
     console.error('[registerAbortion]', error)
     return { success: false, error: 'Erro ao registrar aborto. Tente novamente.' }
+  }
+}
+
+// ─── Registrar Natimorto ───────────────────────────────────
+
+export async function registerStillbirth(rawData: unknown): Promise<ActionResult> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado' }
+
+    const activeFarm = await getActiveFarm(session.user.id)
+    if (!activeFarm) return { success: false, error: 'Fazenda não encontrada' }
+    const { farmId, role } = activeFarm
+
+    if (!['OWNER', 'MANAGER'].includes(role)) {
+      return { success: false, error: 'Sem permissão para registrar natimorto' }
+    }
+
+    const parsed = stillbirthSchema.safeParse(rawData)
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.errors[0]?.message ?? 'Dados inválidos' }
+    }
+
+    const { animalId, calveId, notes } = parsed.data
+
+    // Valida mãe
+    const mother = await prisma.animal.findFirst({
+      where:  { id: animalId, farmId, status: 'ACTIVE' },
+      select: { id: true, tag: true, sex: true, category: true, milkStatus: true, parityNumber: true },
+    })
+    if (!mother) return { success: false, error: 'Animal não encontrado ou inativo' }
+    if (mother.sex !== 'FEMALE') return { success: false, error: 'Somente fêmeas' }
+    if (!['COW', 'HEIFER'].includes(mother.category)) {
+      return { success: false, error: 'Somente vacas e novilhas' }
+    }
+
+    // Valida bezerro: deve pertencer a esta fazenda e ter a mãe correta
+    const calf = await prisma.animal.findFirst({
+      where: { id: calveId, farmId, motherId: animalId },
+      select: { id: true, tag: true, status: true, birthDate: true },
+    })
+    if (!calf) return { success: false, error: 'Bezerro não encontrado ou não pertence a este animal' }
+    if (calf.status === 'DEAD') return { success: false, error: 'Bezerro já está marcado como morto' }
+
+    const now = new Date()
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Marca o bezerro como morto (natimorto)
+      await tx.animal.update({
+        where: { id: calveId },
+        data:  { status: 'DEAD', exitDate: calf.birthDate ?? now, exitReason: 'STILLBORN' },
+      })
+
+      // 2. Registra evento de saúde na mãe
+      await tx.healthEvent.create({
+        data: {
+          animalId,
+          type:        'OTHER',
+          description: 'Natimorto',
+          occurredAt:  calf.birthDate ?? now,
+          resolved:    true,
+          notes:       notes ?? null,
+        },
+      })
+
+      // 3. Decrementa parityNumber da mãe (parto não contabilizado)
+      const newParity = Math.max(0, (mother.parityNumber ?? 1) - 1)
+      await tx.animal.update({
+        where: { id: animalId },
+        data:  {
+          parityNumber:    newParity,
+          lastCalvingDate: null,
+          // Status reprodutivo: trata como vazia (igual ao pós-aborto)
+          milkStatus: mother.milkStatus === 'DRY_PREGNANT' ? 'DRY' : mother.milkStatus,
+        },
+      })
+
+      // 4. Atualiza snapshot veterinário para estado vazio
+      const GROUP_MAP: Record<string, string> = {
+        CLOSE_UP:           'EMPTY_LATE',
+        DRY_PREGNANT:       'DRY_EMPTY',
+        LACTATING_PREGNANT: 'EMPTY_LATE',
+      }
+      const latestSnap = await tx.veterinaryAnimalSnapshot.findFirst({
+        where:   { animalId },
+        orderBy: { createdAt: 'desc' },
+        select:  { id: true, reportGroup: true },
+      })
+      if (latestSnap && GROUP_MAP[latestSnap.reportGroup]) {
+        await tx.veterinaryAnimalSnapshot.update({
+          where: { id: latestSnap.id },
+          data:  { reportGroup: GROUP_MAP[latestSnap.reportGroup] as any },
+        })
+      }
+
+      // 5. Resolve alertas de parto pendentes
+      await tx.alert.updateMany({
+        where: { animalId, farmId, type: { in: ['CALVING_OVERDUE', 'CALVING_SOON'] }, status: 'PENDING' },
+        data:  { status: 'RESOLVED', resolvedAt: now },
+      })
+    })
+
+    auditLog({
+      farmId,
+      userId:   session.user.id,
+      action:   'UPDATE',
+      entity:   'Animal',
+      entityId: animalId,
+      after:    { calveId, calveTag: calf.tag, notes: notes ?? null },
+      metadata: { event: 'STILLBIRTH_REGISTERED', motherTag: mother.tag, calveTag: calf.tag },
+    })
+
+    revalidatePath('/animals')
+    revalidatePath(`/animals/${animalId}`)
+    revalidatePath(`/animals/${calveId}`)
+    revalidatePath('/management/today')
+
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[registerStillbirth]', error)
+    return { success: false, error: 'Erro ao registrar natimorto. Tente novamente.' }
   }
 }

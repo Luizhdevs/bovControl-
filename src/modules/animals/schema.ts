@@ -194,3 +194,11 @@ export const abortionSchema = z.object({
 })
 
 export type AbortionInput = z.infer<typeof abortionSchema>
+
+export const stillbirthSchema = z.object({
+  animalId: z.string().cuid('ID inválido'),
+  calveId:  z.string().cuid('ID do bezerro inválido'),
+  notes:    z.string().trim().max(300).optional(),
+})
+
+export type StillbirthInput = z.infer<typeof stillbirthSchema>

@@ -16,6 +16,7 @@ import { AuditTimeline }                           from '@/modules/audit/compone
 import { AnimalFeedSection }                       from '@/modules/feed/components/animal-feed-section'
 import { HealthEventTimeline }                     from '@/modules/health-events/components/health-event-timeline'
 import { AnimalQuickActions, AddPhotoButton }  from '@/modules/animals/components/animal-quick-actions'
+import { StillbirthButton }                   from '@/modules/animals/components/stillbirth-button'
 import { AnimalNextActionsSection }            from '@/modules/animals/components/animal-next-actions'
 import { ReactivateAnimalButton }              from '@/modules/animals/components/animal-status-actions'
 import { AnimalTimeline }      from '@/modules/animals/components/animal-timeline'
@@ -625,6 +626,15 @@ export default async function AnimalDetailPage({
                     <span className="text-xs text-muted-foreground">{formatDate(cria.birthDate)}</span>
                   )}
                   <CategoryBadge category={cria.category} size="sm" />
+                  {isActive && cria.status === 'ACTIVE' && (
+                    <StillbirthButton
+                      animalId={animal.id}
+                      animalTag={animal.tag}
+                      animalName={animal.name ?? null}
+                      calveId={cria.id}
+                      calveTag={cria.tag}
+                    />
+                  )}
                 </div>
               </Link>
             ))}
