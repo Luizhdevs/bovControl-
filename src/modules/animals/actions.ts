@@ -32,6 +32,7 @@ import {
   reactivateAnimalSchema,
   calvingSchema,
   dryOffSchema,
+  abortionSchema,
 } from './schema'
 import type { ActionResult } from './types'
 
@@ -1037,4 +1038,113 @@ export async function transferLotFromSession(rawData: unknown): Promise<ActionRe
   const activeFarm = await getActiveFarm(session.user.id)
   if (!activeFarm) return { success: false, error: 'Fazenda não encontrada' }
   return transferAnimalToLot(activeFarm.farmId, rawData)
+}
+
+// ─── Registrar Aborto ─────────────────────────────────────
+
+export async function registerAbortion(rawData: unknown): Promise<ActionResult> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado' }
+
+    const activeFarm = await getActiveFarm(session.user.id)
+    if (!activeFarm) return { success: false, error: 'Fazenda não encontrada' }
+    const { farmId, role } = activeFarm
+
+    if (!['OWNER', 'MANAGER'].includes(role)) {
+      return { success: false, error: 'Sem permissão para registrar aborto' }
+    }
+
+    const parsed = abortionSchema.safeParse(rawData)
+    if (!parsed.success) {
+      const first = parsed.error.errors[0]
+      return { success: false, error: first?.message ?? 'Dados inválidos' }
+    }
+
+    const { animalId, abortedAt, notes } = parsed.data
+
+    const animal = await prisma.animal.findFirst({
+      where:  { id: animalId, farmId, status: 'ACTIVE' },
+      select: { id: true, tag: true, sex: true, category: true, milkStatus: true },
+    })
+
+    if (!animal) return { success: false, error: 'Animal não encontrado ou inativo' }
+    if (animal.sex !== 'FEMALE') return { success: false, error: 'Somente fêmeas podem ter aborto registrado' }
+    if (!['COW', 'HEIFER'].includes(animal.category)) {
+      return { success: false, error: 'Somente vacas e novilhas podem ter aborto registrado' }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Evento de saúde para histórico
+      await tx.healthEvent.create({
+        data: {
+          animalId,
+          type:        'OTHER',
+          description: 'Aborto',
+          occurredAt:  abortedAt,
+          resolved:    true,
+          notes:       notes ?? null,
+        },
+      })
+
+      // Atualiza milkStatus: se estava DRY_PREGNANT → DRY (perde gestação, continua seca)
+      const newMilkStatus = animal.milkStatus === 'DRY_PREGNANT' ? 'DRY' : undefined
+      if (newMilkStatus) {
+        await tx.animal.update({
+          where: { id: animalId },
+          data:  { milkStatus: newMilkStatus },
+        })
+      }
+
+      // Atualiza o snapshot veterinário mais recente para estado vazio
+      const ABORTION_GROUP_MAP: Record<string, string> = {
+        CLOSE_UP:           'EMPTY_LATE',
+        DRY_PREGNANT:       'DRY_EMPTY',
+        LACTATING_PREGNANT: 'EMPTY_LATE',
+      }
+
+      const latestSnap = await tx.veterinaryAnimalSnapshot.findFirst({
+        where:   { animalId },
+        orderBy: { createdAt: 'desc' },
+        select:  { id: true, reportGroup: true },
+      })
+
+      if (latestSnap && ABORTION_GROUP_MAP[latestSnap.reportGroup]) {
+        await tx.veterinaryAnimalSnapshot.update({
+          where: { id: latestSnap.id },
+          data:  { reportGroup: ABORTION_GROUP_MAP[latestSnap.reportGroup] as any },
+        })
+      }
+
+      // Resolve alertas de parto pendentes
+      await tx.alert.updateMany({
+        where: {
+          animalId,
+          farmId,
+          type:   { in: ['CALVING_OVERDUE', 'CALVING_SOON'] },
+          status: 'PENDING',
+        },
+        data: { status: 'RESOLVED', resolvedAt: new Date() },
+      })
+    })
+
+    auditLog({
+      farmId,
+      userId:   session.user.id,
+      action:   'UPDATE',
+      entity:   'Animal',
+      entityId: animalId,
+      after:    { abortedAt, notes: notes ?? null },
+      metadata: { event: 'ABORTION_REGISTERED', animalTag: animal.tag },
+    })
+
+    revalidatePath('/animals')
+    revalidatePath(`/animals/${animalId}`)
+    revalidatePath('/management/today')
+
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[registerAbortion]', error)
+    return { success: false, error: 'Erro ao registrar aborto. Tente novamente.' }
+  }
 }

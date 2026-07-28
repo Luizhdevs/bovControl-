@@ -184,3 +184,13 @@ export const dryOffSchema = z.object({
 })
 
 export type DryOffInput = z.infer<typeof dryOffSchema>
+
+// ─── Registrar Aborto ──────────────────────────────────────
+
+export const abortionSchema = z.object({
+  animalId:  z.string().cuid('ID inválido'),
+  abortedAt: z.coerce.date({ required_error: 'Informe a data do aborto' }),
+  notes:     z.string().trim().max(300).optional(),
+})
+
+export type AbortionInput = z.infer<typeof abortionSchema>

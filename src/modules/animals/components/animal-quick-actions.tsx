@@ -28,6 +28,8 @@ import {
   addAnimalPhoto,
   registerCalving,
 } from '../actions'
+import { DryOffSheet }            from '@/modules/management/components/dry-off-sheet'
+import { ManagementAbortionSheet } from '@/modules/management/components/management-abortion-sheet'
 import {
   AnimalStatusActionsSheets,
   type StatusChangeType,
@@ -50,22 +52,25 @@ import {
   MoreHorizontal,
   DollarSign,
   Baby,
+  Droplets,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { LotSelectOption } from '../types'
 
 // ─── Tipos ─────────────────────────────────────────────────
 
-type SheetType = 'lot' | 'weight' | 'milk' | 'photo' | 'more' | 'calving' | StatusChangeType
+type SheetType = 'lot' | 'weight' | 'milk' | 'photo' | 'more' | 'calving' | 'dry-off' | 'abortion' | StatusChangeType
 
 interface AnimalQuickActionsProps {
   animalId:    string
   farmId:      string
   animalTag:   string
+  animalName:  string | null
   animalStatus: string
   animalSex:   string
   animalCategory: string
   animalBirthType: string | null
+  milkStatus:  string | null
   currentLotId: string | null
   lots:         LotSelectOption[]
   userRole:     string
@@ -662,10 +667,12 @@ export function AnimalQuickActions({
   animalId,
   farmId,
   animalTag,
+  animalName,
   animalStatus,
   animalSex,
   animalCategory,
   animalBirthType,
+  milkStatus,
   currentLotId,
   lots,
   userRole,
@@ -683,6 +690,10 @@ export function AnimalQuickActions({
   const guards  = getAnimalOperationGuards(animal)
   const isActive = animalStatus === 'ACTIVE'
   const canManage = ['OWNER', 'MANAGER'].includes(userRole)
+
+  // Secar: apenas fêmeas ativas que ainda não estão secas
+  const alreadyDry = milkStatus === 'DRY' || milkStatus === 'DRY_PREGNANT'
+  const canDryOff  = isActive && animalSex === 'FEMALE' && ['COW', 'HEIFER'].includes(animalCategory) && !alreadyDry
 
   // Ações rápidas da barra
   const quickActions: QuickAction[] = [
@@ -730,6 +741,12 @@ export function AnimalQuickActions({
       icon:    Baby,
       label:   'Parto',
       onClick: () => setOpenSheet('calving'),
+    }] : []),
+    ...(canDryOff ? [{
+      id:      'dry-off',
+      icon:    Droplets,
+      label:   'Secar',
+      onClick: () => setOpenSheet('dry-off'),
     }] : []),
     {
       id:    'ear-tag',
@@ -820,6 +837,22 @@ export function AnimalQuickActions({
         onClose={() => setOpenSheet(null)}
       />
 
+      <DryOffSheet
+        animalId={animalId}
+        animalTag={animalTag}
+        animalName={animalName}
+        open={openSheet === 'dry-off'}
+        onClose={() => setOpenSheet(null)}
+      />
+
+      <ManagementAbortionSheet
+        animalId={animalId}
+        animalTag={animalTag}
+        animalName={animalName}
+        open={openSheet === 'abortion'}
+        onClose={() => setOpenSheet(null)}
+      />
+
       {/* Sheet: Mais ações */}
       {canManage && (
         <Sheet open={openSheet === 'more'} onOpenChange={(v) => !v && setOpenSheet(null)}>
@@ -880,6 +913,22 @@ export function AnimalQuickActions({
                   <p className="text-xs text-destructive/70 mt-0.5">Registre a data e a causa mortis</p>
                 </div>
               </button>
+
+              {animalSex === 'FEMALE' && ['COW', 'HEIFER'].includes(animalCategory) && (
+                <button
+                  type="button"
+                  onClick={() => setOpenSheet('abortion')}
+                  className="w-full flex items-center gap-3 rounded-xl border border-rose-500/30 bg-rose-500/5 px-4 py-3.5 text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                >
+                  <div className="size-9 rounded-lg bg-rose-500/10 flex items-center justify-center shrink-0">
+                    <AlertTriangle className="size-4 text-rose-500" />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-semibold">Registrar Aborto</p>
+                    <p className="text-xs text-rose-500/70 mt-0.5">Perda de prenhez — registra no histórico de saúde</p>
+                  </div>
+                </button>
+              )}
             </div>
           </SheetContent>
         </Sheet>

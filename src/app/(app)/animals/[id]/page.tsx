@@ -313,10 +313,12 @@ export default async function AnimalDetailPage({
         animalId={animal.id}
         farmId={farmId}
         animalTag={animal.tag}
+        animalName={animal.name ?? null}
         animalStatus={animal.status}
         animalSex={animal.sex}
         animalCategory={animal.category}
         animalBirthType={animal.birthType ?? null}
+        milkStatus={animal.milkStatus ?? null}
         currentLotId={animal.lotId}
         lots={lots}
         userRole={role}
