@@ -34,6 +34,7 @@ import {
   dryOffSchema,
   abortionSchema,
   stillbirthSchema,
+  weaningSchema,
 } from './schema'
 import type { ActionResult } from './types'
 
@@ -874,7 +875,7 @@ export async function registerCalving(
 
       // Encerra alertas de parto pendentes para esta mãe
       await tx.alert.updateMany({
-        where: { animalId, farmId, type: 'CALVING', status: 'PENDING' },
+        where: { animalId, farmId, type: { in: ['CALVING_OVERDUE', 'CALVING_SOON'] }, status: 'PENDING' },
         data:  { status: 'RESOLVED', resolvedAt: new Date() },
       })
 
@@ -1268,5 +1269,86 @@ export async function registerStillbirth(rawData: unknown): Promise<ActionResult
   } catch (error) {
     console.error('[registerStillbirth]', error)
     return { success: false, error: 'Erro ao registrar natimorto. Tente novamente.' }
+  }
+}
+
+// ─── Registrar Desmama ─────────────────────────────────────
+
+export async function registerWeaning(rawData: unknown): Promise<ActionResult> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado' }
+
+    const activeFarm = await getActiveFarm(session.user.id)
+    if (!activeFarm) return { success: false, error: 'Fazenda não encontrada' }
+    const { farmId, role } = activeFarm
+
+    if (!['OWNER', 'MANAGER'].includes(role)) {
+      return { success: false, error: 'Sem permissão para registrar desmama' }
+    }
+
+    const parsed = weaningSchema.safeParse(rawData)
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.errors[0]?.message ?? 'Dados inválidos' }
+    }
+
+    const { animalId, weanedAt, notes } = parsed.data
+
+    const animal = await prisma.animal.findFirst({
+      where:  { id: animalId, farmId, status: 'ACTIVE', category: 'CALF' },
+      select: { id: true, tag: true, sex: true, birthDate: true },
+    })
+
+    if (!animal) return { success: false, error: 'Bezerro não encontrado ou já desmamado' }
+
+    const today = new Date()
+    if (animal.birthDate) {
+      const ageDays = Math.floor((today.getTime() - new Date(animal.birthDate).getTime()) / (24 * 60 * 60 * 1000))
+      if (ageDays < 90) return { success: false, error: `Bezerro com apenas ${ageDays} dias (mínimo 90)` }
+    }
+
+    // Categoria pós-desmama: fêmea → HEIFER, macho → STEER
+    const newCategory = animal.sex === 'FEMALE' ? 'HEIFER' : 'STEER'
+    const newMilkStatus = animal.sex === 'FEMALE' ? 'HEIFER' : 'NA'
+
+    await prisma.$transaction(async (tx) => {
+      // Promove a categoria do animal
+      await tx.animal.update({
+        where: { id: animalId },
+        data:  { category: newCategory, milkStatus: newMilkStatus },
+      })
+
+      // Evento de saúde para histórico
+      await tx.healthEvent.create({
+        data: {
+          animalId,
+          type:        'OTHER',
+          description: 'Desmama',
+          occurredAt:  weanedAt,
+          resolved:    true,
+          notes:       notes ?? null,
+        },
+      })
+    })
+
+    auditLog({
+      farmId,
+      userId:   session.user.id,
+      action:   'UPDATE',
+      entity:   'Animal',
+      entityId: animalId,
+      before:   { category: 'CALF' },
+      after:    { category: newCategory, weanedAt, notes: notes ?? null },
+      metadata: { event: 'WEANING_REGISTERED', animalTag: animal.tag },
+    })
+
+    revalidatePath('/animals')
+    revalidatePath(`/animals/${animalId}`)
+    revalidatePath('/management/today')
+
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[registerWeaning]', error)
+    return { success: false, error: 'Erro ao registrar desmama. Tente novamente.' }
   }
 }

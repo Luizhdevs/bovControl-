@@ -139,15 +139,13 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
   // 3. Mapa animalId → snapshot para lookup O(1)
   const snapMap = new Map(vetSnapshots.map((s) => [s.animalId!, s]))
 
-  // 4. Detecção complementar de partos (casos onde lastCalvingDate não foi atualizado):
-  //    - reproduções do tipo CALVING registradas nos últimos 180 dias
-  //    - filhos (maternalChildren) nascidos nos últimos 180 dias
-  //    Evita N+1: 2 groupBy queries em paralelo filtradas pelo conjunto de animalIds
+  // 4. Detecção complementar de partos + pesos de bezerros para desmama
   const animalIds    = animals.map(a => a.id)
+  const calfIds      = animals.filter(a => a.category === 'CALF').map(a => a.id)
   const since180dMs  = today.getTime() - 180 * DAY_MS
   const since180d    = new Date(since180dMs)
 
-  const [recentCalvingReprods, recentCalfBirths] = await Promise.all([
+  const [recentCalvingReprods, recentCalfBirths, calfWeightRows] = await Promise.all([
     animalIds.length > 0
       ? prisma.reproduction.groupBy({
           by:    ['animalId'],
@@ -170,6 +168,15 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
           _max: { birthDate: true },
         })
       : Promise.resolve([]),
+
+    // Pesos mais recentes de bezerros (para avaliação de desmama)
+    calfIds.length > 0
+      ? prisma.weightRecord.findMany({
+          where:   { animalId: { in: calfIds } },
+          orderBy: { measuredAt: 'desc' },
+          select:  { animalId: true, weightKg: true },
+        })
+      : Promise.resolve([]),
   ])
 
   // Mapas de lookup O(1): animalId → timestamp do parto mais recente detectado
@@ -183,6 +190,11 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
       .filter(r => r.motherId != null && r._max.birthDate != null)
       .map(r  => [r.motherId!, r._max.birthDate!.getTime()]),
   )
+  // Peso mais recente por bezerro (somente o primeiro resultado — já ordenado desc)
+  const calfWeightMap = new Map<string, number>()
+  for (const w of calfWeightRows) {
+    if (!calfWeightMap.has(w.animalId)) calfWeightMap.set(w.animalId, w.weightKg)
+  }
 
   // 5. Seções
   const critical:     ManagementActionItem[] = []
@@ -192,6 +204,7 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
   const calves:       ManagementActionItem[] = []
   const registration: ManagementActionItem[] = []
   const health:       ManagementActionItem[] = []
+  const weaning:      ManagementActionItem[] = []
 
   for (const a of animals) {
     const snap     = snapMap.get(a.id) ?? null
@@ -220,13 +233,16 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
         (best, ms) => ms === null ? best : best === null ? ms : Math.max(best, ms),
         null,
       )
-      const TOLERANCE_MS = 14 * DAY_MS
-
+      // Tolerância de 90 dias: cobre partos prematuros e registros com datas aproximadas
+      const TOLERANCE_MS = 90 * DAY_MS
       const alreadyCalvedSinceExpected = lastCalvMs !== null && expectedMs !== null &&
         lastCalvMs >= expectedMs - TOLERANCE_MS
+      // Fallback: qualquer parto nos últimos 180 dias suprime o aviso de overdue
+      const calvedRecently180d = lastCalvMs !== null &&
+        lastCalvMs >= today.getTime() - 180 * DAY_MS
 
-      // Parto vencido — só exibe se o animal não tiver parto registrado desde a data prevista
-      if (daysUntilCalving !== null && daysUntilCalving < 0 && !alreadyCalvedSinceExpected) {
+      // Parto vencido — só exibe se não há evidência de parto recente
+      if (daysUntilCalving !== null && daysUntilCalving < 0 && !alreadyCalvedSinceExpected && !calvedRecently180d) {
         const abs = Math.abs(daysUntilCalving)
         const it = item(`${a.id}-calving-overdue`, base, origin,
           'CALVING_OVERDUE', 'HIGH',
@@ -337,6 +353,41 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
           missing.join(' · '),
         ))
       }
+
+      // ── Desmama ─────────────────────────────────────────
+      if (a.birthDate) {
+        const ageDays  = Math.floor((today.getTime() - new Date(a.birthDate).getTime()) / DAY_MS)
+        const weightKg = calfWeightMap.get(a.id) ?? null
+
+        if (ageDays >= 85) {
+          const meetsAge    = ageDays >= 90
+          const meetsWeight = weightKg !== null && weightKg >= 100
+          const noWeight    = weightKg === null
+
+          const title = meetsAge && meetsWeight
+            ? 'Pronto para desmamar'
+            : meetsAge && noWeight
+            ? 'Verificar peso — possível desmama'
+            : meetsAge
+            ? `Peso insuficiente (${weightKg} kg)`
+            : `Desmama em ${90 - ageDays} dia${90 - ageDays !== 1 ? 's' : ''}`
+
+          const reason = [
+            `${ageDays} dias de idade`,
+            weightKg !== null ? `${weightKg} kg` : 'peso não registrado',
+            meetsAge && meetsWeight ? '✓ Apto para desmama' : meetsAge && !meetsWeight ? '✗ Mínimo 100 kg' : '',
+          ].filter(Boolean).join(' · ')
+
+          const priority: ManagementPriority = meetsAge && meetsWeight ? 'HIGH' : meetsAge ? 'MEDIUM' : 'LOW'
+
+          const it: ManagementActionItem = {
+            ...item(`${a.id}-weaning`, base, origin, 'WEANING_DUE', priority, title, reason, ageDays),
+            weightKg,
+            sex: a.sex,
+          }
+          weaning.push(it)
+        }
+      }
     }
 
     // ── Cadastro (sem foto / sem lote) ─────────────────────
@@ -390,6 +441,8 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
   }))
 
   // 7. Resumo
+  weaning.sort((a, b) => (b.days ?? 0) - (a.days ?? 0))  // mais velhos primeiro
+
   const allUnique = new Set([
     ...critical.map((i) => i.id),
     ...calving.map((i) => i.id),
@@ -399,9 +452,10 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
     ...registration.map((i) => i.id),
     ...health.map((i) => i.id),
     ...alerts.map((i) => i.id),
+    ...weaning.map((i) => i.id),
   ])
 
-  const allItems = [...critical, ...calving, ...dryOff, ...reproduction, ...calves, ...registration, ...health, ...alerts]
+  const allItems = [...critical, ...calving, ...dryOff, ...reproduction, ...calves, ...registration, ...health, ...alerts, ...weaning]
 
   const summary: ManagementSummary = {
     totalActions:        allUnique.size,
@@ -417,11 +471,12 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
     animalsWithoutLot:   registration.filter((i) => i.type === 'MISSING_LOT').length,
     animalsWithoutPhoto: registration.filter((i) => i.type === 'MISSING_PHOTO').length,
     pendingAlerts:       alerts.length,
+    weaningDue:          weaning.filter((i) => i.priority === 'HIGH').length,
   }
 
   // 8. Seções
   const sections: ManagementSections = {
-    critical, calving, dryOff, reproduction, calves, registration, health, alerts,
+    critical, calving, dryOff, reproduction, calves, registration, health, alerts, weaning,
   }
 
   return { summary, sections }

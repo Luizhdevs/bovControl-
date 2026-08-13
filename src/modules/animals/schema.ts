@@ -202,3 +202,11 @@ export const stillbirthSchema = z.object({
 })
 
 export type StillbirthInput = z.infer<typeof stillbirthSchema>
+
+export const weaningSchema = z.object({
+  animalId:  z.string().cuid('ID inválido'),
+  weanedAt:  z.coerce.date({ required_error: 'Informe a data da desmama' }),
+  notes:     z.string().trim().max(300).optional(),
+})
+
+export type WeaningInput = z.infer<typeof weaningSchema>

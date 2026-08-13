@@ -13,6 +13,7 @@ export type ManagementActionType =
   | 'MISSING_PHOTO'
   | 'MISSING_LOT'
   | 'PENDING_ALERT'
+  | 'WEANING_DUE'
 
 export type ManagementPriority = 'HIGH' | 'MEDIUM' | 'LOW'
 
@@ -40,6 +41,8 @@ export interface ManagementActionItem {
   days:         number | null
   dueDate:      Date | null
   href:         string
+  weightKg?:    number | null
+  sex?:         string | null
 }
 
 export interface ManagementSummary {
@@ -56,6 +59,7 @@ export interface ManagementSummary {
   animalsWithoutLot:   number
   animalsWithoutPhoto: number
   pendingAlerts:       number
+  weaningDue:          number
 }
 
 export interface ManagementSections {
@@ -67,6 +71,7 @@ export interface ManagementSections {
   registration: ManagementActionItem[]
   health:       ManagementActionItem[]
   alerts:       ManagementActionItem[]
+  weaning:      ManagementActionItem[]
 }
 
 export interface ManagementOverview {

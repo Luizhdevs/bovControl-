@@ -8,12 +8,13 @@ import { cn }        from '@/lib/utils'
 import {
   AlertTriangle, Baby, Droplets, CheckCircle2, ChevronRight,
   Camera, Bell, Heart, Stethoscope, Layers2,
-  Edit2,
+  Edit2, Scissors,
 } from 'lucide-react'
 import type { ManagementActionItem, ManagementOverview } from '../types'
-import { DryOffSheet }            from './dry-off-sheet'
-import { ManagementCalvingSheet } from './management-calving-sheet'
-import { ManagementLotSheet }     from './management-lot-sheet'
+import { DryOffSheet }             from './dry-off-sheet'
+import { ManagementCalvingSheet }  from './management-calving-sheet'
+import { ManagementLotSheet }      from './management-lot-sheet'
+import { ManagementWeaningSheet }  from './management-weaning-sheet'
 
 // ─── Tipo do sheet ativo ──────────────────────────────────
 
@@ -21,11 +22,12 @@ type ActiveSheet =
   | { type: 'DRY_OFF';  item: ManagementActionItem }
   | { type: 'CALVING';  item: ManagementActionItem }
   | { type: 'LOT';      item: ManagementActionItem }
+  | { type: 'WEANING';  item: ManagementActionItem }
   | null
 
 // ─── Mapa de botões por tipo de ação ─────────────────────
 
-type SheetTriggerType = 'DRY_OFF' | 'CALVING' | 'LOT'
+type SheetTriggerType = 'DRY_OFF' | 'CALVING' | 'LOT' | 'WEANING'
 
 const ACTION_BUTTON: Partial<Record<string, {
   label:      string
@@ -36,6 +38,7 @@ const ACTION_BUTTON: Partial<Record<string, {
   CALVING_OVERDUE: { label: 'Parto',    sheetType: 'CALVING', className: 'bg-violet-500/15 text-violet-700 dark:text-violet-400 hover:bg-violet-500/25' },
   CALVING_SOON:    { label: 'Parto',    sheetType: 'CALVING', className: 'bg-violet-500/15 text-violet-700 dark:text-violet-400 hover:bg-violet-500/25' },
   MISSING_LOT:     { label: 'Lote',     sheetType: 'LOT',     className: 'bg-primary/10 text-primary hover:bg-primary/20' },
+  WEANING_DUE:     { label: 'Desmamar', sheetType: 'WEANING', className: 'bg-green-500/15 text-green-700 dark:text-green-400 hover:bg-green-500/25' },
 }
 
 // ─── Labels ───────────────────────────────────────────────
@@ -254,7 +257,7 @@ export function ManagementTodayClient({ overview }: { overview: ManagementOvervi
           <SummaryCard label="Alta prioridade"      value={summary.highPriority}     color="text-red-500" />
           <SummaryCard label="Partos próximos"      value={summary.closeToCalving}   color="text-violet-500" />
           <SummaryCard label="A secar"              value={summary.dueToDryOff}      color="text-amber-500" />
-          <SummaryCard label="Bezerros incompletos" value={summary.incompleteCalves} color="text-green-500" />
+          <SummaryCard label="Desmama prontos"      value={summary.weaningDue}       color="text-green-600" />
           <SummaryCard label="Alertas pendentes"    value={summary.pendingAlerts}    color="text-orange-500" href="/alerts" />
         </div>
 
@@ -285,6 +288,11 @@ export function ManagementTodayClient({ overview }: { overview: ManagementOvervi
             items={sections.health} emptyMessage="Nenhum acompanhamento." onSheet={setActiveSheet} />
         )}
 
+        {sections.weaning.length > 0 && (
+          <Section title="Desmama" icon={Scissors} iconColor="bg-green-600"
+            items={sections.weaning} emptyMessage="Nenhum bezerro para desmamar." onSheet={setActiveSheet} />
+        )}
+
         <Section title="Bezerros e Cadastros Incompletos" icon={Baby} iconColor="bg-green-600"
           items={sections.calves} emptyMessage="Cadastros completos." onSheet={setActiveSheet} />
 
@@ -308,6 +316,16 @@ export function ManagementTodayClient({ overview }: { overview: ManagementOvervi
       </div>
 
       {/* ── Sheets ───────────────────────────────────────── */}
+      <ManagementWeaningSheet
+        open={activeSheet?.type === 'WEANING'}
+        onClose={() => setActiveSheet(null)}
+        animalId={activeSheet?.type === 'WEANING'   ? activeSheet.item.animalId   : ''}
+        animalTag={activeSheet?.type === 'WEANING'  ? activeSheet.item.animalTag  : ''}
+        animalName={activeSheet?.type === 'WEANING' ? activeSheet.item.animalName : null}
+        ageDays={activeSheet?.type === 'WEANING'    ? (activeSheet.item.days ?? null) : null}
+        weightKg={activeSheet?.type === 'WEANING'   ? (activeSheet.item.weightKg ?? null) : null}
+        sex={activeSheet?.type === 'WEANING'        ? (activeSheet.item.sex ?? null) : null}
+      />
       <DryOffSheet
         open={activeSheet?.type === 'DRY_OFF'}
         onClose={() => setActiveSheet(null)}
