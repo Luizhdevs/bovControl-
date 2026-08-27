@@ -377,8 +377,33 @@ function PhotoSheet({
   const fileRef                 = useRef<HTMLInputElement>(null)
   const { toast }               = useToast()
 
-  const ALLOWED_TYPES  = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
-  const MAX_SIZE_BYTES = 5 * 1024 * 1024
+  const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
+
+  // Comprime imagens JPEG/PNG/WebP no browser com Canvas antes de enviar.
+  // HEIC/HEIF não são suportados pelo Canvas — passam direto.
+  function compressForUpload(file: File): Promise<Blob> {
+    if (file.type === 'image/heic' || file.type === 'image/heif') return Promise.resolve(file)
+    return new Promise((resolve) => {
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        const MAX_PX = 1920
+        const scale  = Math.min(1, MAX_PX / img.width, MAX_PX / img.height)
+        const canvas = document.createElement('canvas')
+        canvas.width  = Math.round(img.width  * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+        canvas.toBlob(
+          (blob) => resolve(blob ?? file),
+          'image/jpeg',
+          0.85,
+        )
+      }
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file) }
+      img.src = url
+    })
+  }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -395,15 +420,18 @@ function PhotoSheet({
       toast({ title: 'Formato inválido', description: 'Use JPEG, PNG, WebP ou HEIC.', variant: 'destructive' })
       return
     }
-    if (file.size > MAX_SIZE_BYTES) {
-      toast({ title: 'Arquivo muito grande', description: 'Máximo de 5 MB por foto.', variant: 'destructive' })
+    // Sem limite de tamanho para formatos compressíveis — o Canvas comprime antes de enviar.
+    // Para HEIC/HEIF (não compressível no browser), limite generoso de 20 MB.
+    if ((file.type === 'image/heic' || file.type === 'image/heif') && file.size > 20 * 1024 * 1024) {
+      toast({ title: 'Arquivo muito grande', description: 'Máximo de 20 MB para HEIC.', variant: 'destructive' })
       return
     }
 
     start(async () => {
       try {
+        const blob = await compressForUpload(file)
         const form = new FormData()
-        form.append('file',     file)
+        form.append('file',     blob, file.name.replace(/\.[^.]+$/, '.jpg'))
         form.append('animalId', animalId)
 
         const response = await fetch('/api/upload', { method: 'POST', body: form })

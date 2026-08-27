@@ -5,7 +5,7 @@
  *   1. Autenticação JWT
  *   2. Rate limit: 20 uploads/min por usuário (em memória)
  *   3. Validação de ownership do animal (anti-IDOR)
- *   4. Validação de tamanho (≤5 MB) e magic bytes
+ *   4. Validação de tamanho (≤15 MB) e magic bytes
  *   5. Verificação de limites de storage da fazenda
  *   6. Compressão sharp + geração de thumbnail (image-processor)
  *   7. Upload para storage (local em dev, Cloudflare R2 em prod)
@@ -84,7 +84,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     // ── 4a. Valida tamanho antes de ler o buffer ─────────────────────────
     if (file.size > MAX_IMAGE_SIZE_BYTES) {
       return NextResponse.json(
-        { error: `Arquivo muito grande. Máximo de 5 MB.` },
+        { error: `Arquivo muito grande. Máximo de 15 MB.` },
         { status: 400 },
       )
     }

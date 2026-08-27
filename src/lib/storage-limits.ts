@@ -4,7 +4,7 @@
  * Limites do plano gratuito:
  *   MAX_IMAGES_PER_FARM_FREE = 1 500 imagens
  *   MAX_STORAGE_MB_FREE      = 1 024 MB (1 GB)
- *   MAX_IMAGE_SIZE_MB        = 5 MB por upload
+ *   MAX_IMAGE_SIZE_MB        = 15 MB por upload (HEIC sem compressão client-side)
  *
  * Os contadores (storageUsedMb, imageCount) são mantidos na tabela farms
  * e atualizados em $transaction junto com cada upload ou delete, para
@@ -18,7 +18,7 @@ import { prisma } from '@/lib/prisma'
 
 export const MAX_IMAGES_PER_FARM_FREE = 1_500
 export const MAX_STORAGE_MB_FREE      = 1_024   // 1 GB
-export const MAX_IMAGE_SIZE_MB        = 5
+export const MAX_IMAGE_SIZE_MB        = 15
 export const MAX_IMAGE_SIZE_BYTES     = MAX_IMAGE_SIZE_MB * 1024 * 1024
 
 // ─── Tipos ─────────────────────────────────────────────────────────────────
