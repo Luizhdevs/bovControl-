@@ -1,10 +1,12 @@
 'use client'
 
-import Image from 'next/image'
+import { useState }  from 'react'
+import Image         from 'next/image'
 import { formatDate, formatRelativeDate, cn } from '@/lib/utils'
 import { getCategoryLabel } from '@/modules/shared/domain/animal-labels'
-import { ImageIcon, Star } from 'lucide-react'
+import { ImageIcon, Star, Expand } from 'lucide-react'
 import { PhotoDeleteButton } from './photo-delete-button'
+import { PhotoLightbox, type LightboxPhoto } from './photo-lightbox'
 
 // ─── Tipos ─────────────────────────────────────────────────
 
@@ -34,15 +36,15 @@ interface AnimalTimelineProps {
 // ─── Item da timeline ──────────────────────────────────────
 
 interface TimelineItemProps {
-  photo:     TimelinePhoto
-  context:   TimelineContext
-  isLast:    boolean
-  farmId:    string
-  canDelete: boolean
+  photo:        TimelinePhoto
+  context:      TimelineContext
+  isLast:       boolean
+  farmId:       string
+  canDelete:    boolean
+  onOpenLightbox: () => void
 }
 
-function TimelineItem({ photo, context, isLast, farmId, canDelete }: TimelineItemProps) {
-  // Usa thumbnail para exibição (menor, mais rápido) mas mantém URL original
+function TimelineItem({ photo, context, isLast, farmId, canDelete, onOpenLightbox }: TimelineItemProps) {
   const displayUrl = photo.thumbnailUrl ?? photo.url
 
   return (
@@ -81,16 +83,26 @@ function TimelineItem({ photo, context, isLast, farmId, canDelete }: TimelineIte
           )}
         </div>
 
-        {/* Foto */}
-        <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden bg-muted mb-2">
+        {/* Foto — clicável para abrir lightbox */}
+        <button
+          type="button"
+          onClick={onOpenLightbox}
+          className="relative w-full aspect-[4/3] rounded-xl overflow-hidden bg-muted mb-2 group block cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
           <Image
             src={displayUrl}
             alt={photo.caption ?? `Foto de ${formatDate(photo.takenAt)}`}
             fill
             sizes="(max-width: 640px) 100vw, 400px"
-            className="object-cover"
+            className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
           />
-        </div>
+          {/* Overlay hint */}
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200 flex items-center justify-center">
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 size-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center">
+              <Expand className="size-5 text-white" />
+            </div>
+          </div>
+        </button>
 
         {/* Contexto do momento */}
         <div className="flex flex-wrap items-center gap-2 mb-1.5">
@@ -153,31 +165,51 @@ function EmptyTimeline() {
  * rastreamento de mudança de lote/categoria por foto).
  */
 export function AnimalTimeline({ photos, context, animalTag, farmId, canDelete }: AnimalTimelineProps) {
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+
   if (photos.length === 0) {
     return <EmptyTimeline />
   }
 
-  const sorted = [...photos].sort((a, b) => +b.takenAt - +a.takenAt)
+  const sorted: TimelinePhoto[] = [...photos].sort((a, b) => +b.takenAt - +a.takenAt)
+
+  const lightboxPhotos: LightboxPhoto[] = sorted.map((p) => ({
+    id:      p.id,
+    url:     p.url,
+    caption: p.caption,
+    takenAt: p.takenAt,
+  }))
 
   return (
-    <div>
-      <p className="text-xs text-muted-foreground mb-4">
-        {sorted.length} {sorted.length === 1 ? 'registro' : 'registros'} fotográficos de{' '}
-        <span className="font-mono font-medium">{animalTag}</span>
-      </p>
-
+    <>
       <div>
-        {sorted.map((photo, index) => (
-          <TimelineItem
-            key={photo.id}
-            photo={photo}
-            context={context}
-            isLast={index === sorted.length - 1}
-            farmId={farmId}
-            canDelete={canDelete}
-          />
-        ))}
+        <p className="text-xs text-muted-foreground mb-4">
+          {sorted.length} {sorted.length === 1 ? 'registro' : 'registros'} fotográficos de{' '}
+          <span className="font-mono font-medium">{animalTag}</span>
+        </p>
+
+        <div>
+          {sorted.map((photo, index) => (
+            <TimelineItem
+              key={photo.id}
+              photo={photo}
+              context={context}
+              isLast={index === sorted.length - 1}
+              farmId={farmId}
+              canDelete={canDelete}
+              onOpenLightbox={() => setLightboxIndex(index)}
+            />
+          ))}
+        </div>
       </div>
-    </div>
+
+      {lightboxIndex !== null && (
+        <PhotoLightbox
+          photos={lightboxPhotos}
+          initialIndex={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+        />
+      )}
+    </>
   )
 }

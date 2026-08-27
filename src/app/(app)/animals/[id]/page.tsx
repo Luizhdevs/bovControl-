@@ -1,5 +1,4 @@
 import { notFound, redirect } from 'next/navigation'
-import Image from 'next/image'
 import Link from 'next/link'
 import { auth } from '@/lib/auth'
 import { getActiveFarm } from '@/lib/active-farm'
@@ -17,6 +16,7 @@ import { AnimalFeedSection }                       from '@/modules/feed/componen
 import { HealthEventTimeline }                     from '@/modules/health-events/components/health-event-timeline'
 import { AnimalQuickActions, AddPhotoButton }  from '@/modules/animals/components/animal-quick-actions'
 import { StillbirthButton }                   from '@/modules/animals/components/stillbirth-button'
+import { HeroPhotoButton }                    from '@/modules/animals/components/hero-photo-button'
 import { AnimalNextActionsSection }            from '@/modules/animals/components/animal-next-actions'
 import { ReactivateAnimalButton }              from '@/modules/animals/components/animal-status-actions'
 import { AnimalTimeline }      from '@/modules/animals/components/animal-timeline'
@@ -195,13 +195,20 @@ export default async function AnimalDetailPage({
           'md:h-[460px] md:mx-0 md:rounded-2xl',
         )}>
           {primaryPhoto ? (
-            <Image
-              src={primaryPhoto.url}
-              alt={`Foto de ${animal.tag}`}
-              fill
+            <HeroPhotoButton
+              primary={{
+                id:      primaryPhoto.id,
+                url:     primaryPhoto.url,
+                caption: primaryPhoto.caption,
+                takenAt: primaryPhoto.takenAt,
+              }}
+              photos={animal.photos.map(p => ({
+                id:      p.id,
+                url:     p.url,
+                caption: p.caption,
+                takenAt: p.takenAt,
+              }))}
               sizes="(min-width: 768px) calc(100vw - 224px), 100vw"
-              className="object-cover object-center"
-              priority
             />
           ) : (
             <div className={cn('absolute inset-0 bg-gradient-to-br', sexColor, 'flex items-center justify-center')}>
