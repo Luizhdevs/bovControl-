@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { auth } from '@/lib/auth'
 import { getActiveFarm } from '@/lib/active-farm'
-import { History } from 'lucide-react'
+import { History, FlaskConical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/page-header'
 import { SectionCard } from '@/components/shared/section-card'
@@ -53,6 +53,21 @@ async function ReproductionDashboardContent({ farmId }: { farmId: string }) {
           </div>
         </div>
       </div>
+
+      {/* Protocolo TE */}
+      <Link
+        href="/reproduction/protocolos/te"
+        className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 hover:bg-muted/30 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <FlaskConical className="size-5 text-violet-500 shrink-0" />
+          <div>
+            <div className="text-sm font-medium">Protocolo TE</div>
+            <div className="text-xs text-muted-foreground">OPU 10/09 · DG P30 em out/2026</div>
+          </div>
+        </div>
+        <span className="text-xs text-muted-foreground">→</span>
+      </Link>
 
       {/* Ação rápida */}
       <ReproductionQuickRegister farmId={farmId} animals={animals} />
