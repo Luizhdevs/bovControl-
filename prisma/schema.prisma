@@ -96,6 +96,7 @@ model Farm {
   earTagTemplates     EarTagTemplate[]
   veterinaryReports   VeterinaryReport[]
   veterinarySnapshots VeterinaryAnimalSnapshot[]
+  teProtocols         TEProtocol[]
 
   @@map("farms")
 }
@@ -201,6 +202,7 @@ model Animal {
   alerts              Alert[]
   feedConsumptions    AnimalFeedConsumption[]
   veterinarySnapshots VeterinaryAnimalSnapshot[]
+  teParticipations    TEParticipation[]
 
   @@unique([farmId, tag])
   @@index([farmId, status])
@@ -318,10 +320,73 @@ model Reproduction {
   notes         String?
   createdAt     DateTime           @default(now())
 
-  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  animal          Animal           @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  teParticipation TEParticipation?
 
   @@index([animalId, type, date])
   @@map("reproductions")
+}
+
+// ─── PROTOCOLOS DE TE ──────────────────────────────────────
+// Agrupa receptoras de uma rodada de transferência de embriões.
+// Permite múltiplos protocolos simultâneos; um animal só pode ter
+// TEParticipation.status = ACTIVE em um único protocolo por vez.
+
+model TEProtocol {
+  id          String          @id @default(cuid())
+  farmId      String
+  name        String          // ex: "TE Set/2026 — ROZTAC-ET"
+  status      TEProtocolStatus @default(ACTIVE)
+
+  opuDate     DateTime        @db.Date
+  teDate      DateTime        @db.Date
+
+  laboratorio String?
+  touro       String?
+  doadoras    String?         @db.Text // texto livre, ex: "AMARILIS EMO 73 / URBANISTA FIV PRLB"
+
+  dgP30Start  DateTime?       @db.Date
+  dgP30End    DateTime?       @db.Date
+  dgP60Start  DateTime?       @db.Date
+  dgP60End    DateTime?       @db.Date
+  prevParto   DateTime?       @db.Date
+
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  farm           Farm              @relation(fields: [farmId], references: [id])
+  participations TEParticipation[]
+
+  @@index([farmId, status])
+  @@map("te_protocols")
+}
+
+model TEParticipation {
+  id             String                @id @default(cuid())
+  protocolId     String
+  animalId       String
+  status         TEParticipationStatus @default(ACTIVE)
+  reproductionId String?               @unique // FK → Reproduction do TE desta receptora
+
+  donor      String? // doadora específica desta receptora
+  ovaQuality String? // qualidade do óvulo: D1-D4, E1-E4, etc.
+  sexo       String? // sexagem do embrião: BX (bezerro) ou BL (bezerra)
+
+  discontinuedAt     DateTime?
+  discontinuedReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  protocol     TEProtocol    @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+  animal       Animal        @relation(fields: [animalId], references: [id])
+  reproduction Reproduction? @relation(fields: [reproductionId], references: [id])
+
+  @@unique([animalId, protocolId])
+  @@index([protocolId, status])
+  @@index([animalId, status])
+  @@map("te_participations")
 }
 
 // ─── PRODUÇÃO DE LEITE ─────────────────────────────────────
@@ -815,4 +880,16 @@ enum VeterinaryDayMeaning {
   DAYS_SINCE_INSEMINATION // dias desde a inseminação
   DAYS_OPEN // dias em anestro / vazia
   UNKNOWN
+}
+
+enum TEProtocolStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum TEParticipationStatus {
+  ACTIVE
+  DISCONTINUED
+  COMPLETED
 }
