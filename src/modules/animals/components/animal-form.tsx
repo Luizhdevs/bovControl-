@@ -138,7 +138,9 @@ export function AnimalForm({
       purpose:      (animal?.purpose    as CreateAnimalInput['purpose']) ?? 'DAIRY',
       name:         animal?.name        ?? '',
       breed:        animal?.breed       ?? 'Mestiço',
-      birthDate:    animal?.birthDate   ? new Date(animal.birthDate) : undefined,
+      birthDate:    animal?.birthDate
+        ? (new Date(animal.birthDate).toISOString().split('T')[0] as unknown as Date)
+        : undefined,
       birthType:    (animal?.birthType  as CreateAnimalInput['birthType']) ?? undefined,
       motherId:     animal?.motherId    ?? undefined,
       fatherId:     animal?.fatherId    ?? undefined,

@@ -43,8 +43,8 @@ export function calculateAge(birthDate: Date | string | null | undefined): strin
   const today = new Date()
 
   const years = differenceInYears(today, date)
-  if (years >= 2) {
-    // 2 anos ou mais: exibe anos + meses restantes
+  if (years >= 1) {
+    // 1 ano ou mais: exibe anos + meses restantes
     const afterYears = new Date(date)
     afterYears.setFullYear(afterYears.getFullYear() + years)
     const remMonths = differenceInMonths(today, afterYears)
@@ -54,7 +54,7 @@ export function calculateAge(birthDate: Date | string | null | undefined): strin
 
   const totalMonths = differenceInMonths(today, date)
   if (totalMonths >= 1) {
-    // Meses completos + dias restantes
+    // Meses completos: exibe todos os meses sem limite
     const afterMonths = new Date(date)
     afterMonths.setMonth(afterMonths.getMonth() + totalMonths)
     const remDays = differenceInDays(today, afterMonths)
