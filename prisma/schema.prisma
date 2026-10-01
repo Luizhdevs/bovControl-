@@ -165,9 +165,12 @@ model Animal {
   entryDate    DateTime     @default(now())
   exitDate     DateTime?
   exitReason   String?
-  motherId     String?
-  fatherId     String?
-  lotId        String?
+  motherId          String?
+  fatherId          String?
+  // Para nascimentos por TE: identidade genética externa (não cadastrada na fazenda)
+  geneticMotherName String? // nome da doadora genética
+  fatherName        String? // identificação do touro/sêmen externo
+  lotId             String?
   milkStatus   MilkStatus   @default(NA)
   observations String?      @db.Text
   createdAt    DateTime     @default(now())

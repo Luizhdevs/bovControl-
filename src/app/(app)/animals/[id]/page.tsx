@@ -570,12 +570,12 @@ export default async function AnimalDetailPage({
       </SectionCard>
 
       {/* ── LINHAGEM ─────────────────────────────────── */}
-      {(animal.mother || animal.father) && (
+      {(animal.mother || animal.father || animal.geneticMotherName || animal.fatherName) && (
         <SectionCard title="Linhagem">
           <InfoRows>
             {animal.mother && (
               <InfoRow
-                label="Mãe"
+                label={animal.birthType === 'EMBRYO_TRANSFER' ? 'Mãe parturiente (receptora)' : 'Mãe'}
                 value={
                   <Link
                     href={`/animals/${animal.mother.id}`}
@@ -585,6 +585,12 @@ export default async function AnimalDetailPage({
                     {animal.mother.name && ` · ${animal.mother.name}`}
                   </Link>
                 }
+              />
+            )}
+            {animal.geneticMotherName && (
+              <InfoRow
+                label="Mãe genética (doadora)"
+                value={<span className="text-muted-foreground">{animal.geneticMotherName}</span>}
               />
             )}
             {animal.father && (
@@ -599,6 +605,12 @@ export default async function AnimalDetailPage({
                     {animal.father.name && ` · ${animal.father.name}`}
                   </Link>
                 }
+              />
+            )}
+            {animal.fatherName && (
+              <InfoRow
+                label="Pai / Sêmen (genético)"
+                value={<span className="text-muted-foreground">{animal.fatherName}</span>}
               />
             )}
           </InfoRows>

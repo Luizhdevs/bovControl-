@@ -141,11 +141,13 @@ export function AnimalForm({
       birthDate:    animal?.birthDate
         ? (new Date(animal.birthDate).toISOString().split('T')[0] as unknown as Date)
         : undefined,
-      birthType:    (animal?.birthType  as CreateAnimalInput['birthType']) ?? undefined,
-      motherId:     animal?.motherId    ?? undefined,
-      fatherId:     animal?.fatherId    ?? undefined,
-      lotId:        animal?.lotId       ?? undefined,
-      observations: animal?.observations ?? '',
+      birthType:         (animal?.birthType  as CreateAnimalInput['birthType']) ?? undefined,
+      motherId:          animal?.motherId    ?? undefined,
+      fatherId:          animal?.fatherId    ?? undefined,
+      geneticMotherName: animal?.geneticMotherName ?? '',
+      fatherName:        animal?.fatherName        ?? '',
+      lotId:             animal?.lotId       ?? undefined,
+      observations:      animal?.observations ?? '',
     },
   })
 
@@ -153,6 +155,8 @@ export function AnimalForm({
   const categoryOptions  = selectedSex === 'FEMALE' ? FEMALE_CATEGORIES : MALE_CATEGORIES
   const selectedMotherId = watch('motherId') ?? null
   const selectedFatherId = watch('fatherId') ?? null
+  const selectedBirthType = watch('birthType')
+  const isEmbryo = selectedBirthType === 'EMBRYO_TRANSFER'
 
   // ── Submit ──────────────────────────────────────────────
 
@@ -328,6 +332,37 @@ export function AnimalForm({
               </Select>
             </FormField>
 
+            {/* Campos genéticos — apenas para TE */}
+            {isEmbryo && (
+              <>
+                <FormField
+                  label="Mãe genética (doadora)"
+                  hint="Nome da vaca doadora — pode não estar na fazenda"
+                  error={(errors as Record<string, { message?: string }>).geneticMotherName?.message}
+                >
+                  <Input
+                    {...register('geneticMotherName')}
+                    placeholder="Ex: Zilda 8001, Lúcia 204..."
+                    className="h-12 text-base"
+                    style={{ fontSize: '16px' }}
+                  />
+                </FormField>
+
+                <FormField
+                  label="Pai / Sêmen (genético)"
+                  hint="Identificação do touro ou sêmen usado"
+                  error={(errors as Record<string, { message?: string }>).fatherName?.message}
+                >
+                  <Input
+                    {...register('fatherName')}
+                    placeholder="Ex: ROZTAC-ET, Sêmen 4021..."
+                    className="h-12 text-base"
+                    style={{ fontSize: '16px' }}
+                  />
+                </FormField>
+              </>
+            )}
+
             {/* Lote */}
             <FormField
               label="Lote"
@@ -359,8 +394,8 @@ export function AnimalForm({
 
             {/* Mãe */}
             <FormField
-              label="Mãe"
-              hint="Matriz (fêmea)"
+              label={isEmbryo ? 'Mãe parturiente (receptora)' : 'Mãe'}
+              hint={isEmbryo ? 'Vaca da fazenda que pariu o animal' : 'Matriz (fêmea)'}
               error={errors.motherId?.message}
             >
               <ParentCombobox

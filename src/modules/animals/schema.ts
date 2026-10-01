@@ -17,9 +17,11 @@ export const createAnimalSchema = z
     breed:     z.string().trim().max(60).default('Mestiço'),
     birthDate: z.coerce.date().optional().nullable(),
     birthType: z.enum(['NATURAL', 'INSEMINATION', 'EMBRYO_TRANSFER']).optional().nullable(),
-    motherId:  z.string().cuid().optional().nullable(),
-    fatherId:  z.string().cuid().optional().nullable(),
-    lotId:     z.string().cuid().optional().nullable(),
+    motherId:          z.string().cuid().optional().nullable(),
+    fatherId:          z.string().cuid().optional().nullable(),
+    geneticMotherName: z.string().trim().max(100).optional().nullable(),
+    fatherName:        z.string().trim().max(100).optional().nullable(),
+    lotId:             z.string().cuid().optional().nullable(),
     observations: z
       .string()
       .max(500, 'Máximo de 500 caracteres')
@@ -59,10 +61,12 @@ export const updateAnimalSchema = z
     breed:    z.string().trim().max(60).optional(),
     birthDate: z.coerce.date().optional().nullable(),
     birthType: z.enum(['NATURAL', 'INSEMINATION', 'EMBRYO_TRANSFER']).optional().nullable(),
-    motherId:  z.string().cuid().optional().nullable(),
-    fatherId:  z.string().cuid().optional().nullable(),
-    lotId:     z.string().cuid().optional().nullable(),
-    exitDate:  z.coerce.date().optional().nullable(),
+    motherId:          z.string().cuid().optional().nullable(),
+    fatherId:          z.string().cuid().optional().nullable(),
+    geneticMotherName: z.string().trim().max(100).optional().nullable(),
+    fatherName:        z.string().trim().max(100).optional().nullable(),
+    lotId:             z.string().cuid().optional().nullable(),
+    exitDate:          z.coerce.date().optional().nullable(),
     exitReason: z.string().max(200).optional().nullable(),
     observations: z.string().max(500).optional().nullable(),
   })
