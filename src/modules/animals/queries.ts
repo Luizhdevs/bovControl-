@@ -187,7 +187,7 @@ export async function getAnimalsForParentSelect(
     },
     select: { id: true, tag: true, name: true, sex: true, category: true },
     orderBy: { tag: 'asc' },
-    take: 50,
+    take: 500,
   })
 }
 

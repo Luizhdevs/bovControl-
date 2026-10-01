@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Loader2, Camera, ChevronDown, ChevronUp } from 'lucide-react'
+import { ParentCombobox } from '@/components/ui/parent-combobox'
 import { FormField } from '@/components/shared/form-field'
 
 import { createAnimalSchema, updateAnimalSchema } from '../schema'
@@ -148,6 +149,8 @@ export function AnimalForm({
 
   const selectedSex      = watch('sex')
   const categoryOptions  = selectedSex === 'FEMALE' ? FEMALE_CATEGORIES : MALE_CATEGORIES
+  const selectedMotherId = watch('motherId') ?? null
+  const selectedFatherId = watch('fatherId') ?? null
 
   // ── Submit ──────────────────────────────────────────────
 
@@ -358,22 +361,13 @@ export function AnimalForm({
               hint="Matriz (fêmea)"
               error={errors.motherId?.message}
             >
-              <Select
-                onValueChange={(v) => setValue('motherId', v === 'none' ? null : v)}
-                defaultValue={animal?.motherId ?? 'none'}
-              >
-                <SelectTrigger className="h-12 text-base">
-                  <SelectValue placeholder="Selecionar mãe..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Não informada</SelectItem>
-                  {mothers.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.tag}{m.name ? ` · ${m.name}` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ParentCombobox
+                options={mothers}
+                value={selectedMotherId}
+                onChange={(id) => setValue('motherId', id ?? undefined)}
+                placeholder="Selecionar mãe..."
+                emptyLabel="Não informada"
+              />
             </FormField>
 
             {/* Pai */}
@@ -382,22 +376,13 @@ export function AnimalForm({
               hint="Reprodutor (macho) ou identificação do sêmen"
               error={errors.fatherId?.message}
             >
-              <Select
-                onValueChange={(v) => setValue('fatherId', v === 'none' ? null : v)}
-                defaultValue={animal?.fatherId ?? 'none'}
-              >
-                <SelectTrigger className="h-12 text-base">
-                  <SelectValue placeholder="Selecionar pai..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Não informado</SelectItem>
-                  {fathers.map((f) => (
-                    <SelectItem key={f.id} value={f.id}>
-                      {f.tag}{f.name ? ` · ${f.name}` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ParentCombobox
+                options={fathers}
+                value={selectedFatherId}
+                onChange={(id) => setValue('fatherId', id ?? undefined)}
+                placeholder="Selecionar pai..."
+                emptyLabel="Não informado"
+              />
             </FormField>
 
             {/* Observações */}
