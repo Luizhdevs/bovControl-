@@ -182,7 +182,7 @@ export function AnimalFilters({
             <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground animate-spin" />
           )}
           <Input
-            placeholder="Buscar por brinco ou nome…"
+            placeholder="Brinco ou nome — separe por vírgula para vários"
             defaultValue={search}
             onChange={(e) => handleSearch(e.target.value)}
             className="pl-9 h-11 text-base"

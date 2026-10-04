@@ -62,12 +62,16 @@ function buildAnimalWhere(
     ...(purpose  && { purpose }),
     ...lotFilter,
     ...agePresetToBirthDateRange(agePreset),
-    ...(search && {
-      OR: [
-        { tag:  { contains: search, mode: 'insensitive' as const } },
-        { name: { contains: search, mode: 'insensitive' as const } },
-      ],
-    }),
+    ...(search && (() => {
+      const terms = search.split(',').map(t => t.trim()).filter(Boolean)
+      if (terms.length === 0) return {}
+      return {
+        OR: terms.flatMap(t => [
+          { tag:  { contains: t, mode: 'insensitive' as const } },
+          { name: { contains: t, mode: 'insensitive' as const } },
+        ]),
+      }
+    })()),
   }
 }
 
