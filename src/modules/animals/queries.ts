@@ -105,10 +105,10 @@ function buildAnimalWhere(
   const andConditions: object[] = []
 
   if (agePresets.length === 1) {
-    const range = agePresetToRange(agePresets[0])
+    const range = agePresetToRange(agePresets[0]!)
     if (range) andConditions.push({ birthDate: range })
   } else if (agePresets.length > 1) {
-    const ranges = agePresets.map(p => agePresetToRange(p)).filter(Boolean)
+    const ranges = agePresets.map(p => agePresetToRange(p!)).filter(Boolean)
     if (ranges.length > 0) andConditions.push({ OR: ranges.map(r => ({ birthDate: r })) })
   }
 
