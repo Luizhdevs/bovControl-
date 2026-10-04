@@ -172,7 +172,7 @@ function ActionCard({
 // ─── Section ─────────────────────────────────────────────
 
 function Section({
-  title, icon: Icon, iconColor, items, emptyMessage, limit = 20, onSheet,
+  title, icon: Icon, iconColor, items, emptyMessage, limit = 20, moreHref, onSheet,
 }: {
   title:        string
   icon:         ElementType
@@ -180,6 +180,7 @@ function Section({
   items:        ManagementActionItem[]
   emptyMessage: string
   limit?:       number
+  moreHref?:    string
   onSheet:      (sheet: ActiveSheet) => void
 }) {
   const shown = items.slice(0, limit)
@@ -209,9 +210,18 @@ function Section({
           ))}
           {rest > 0 && (
             <div className="pt-2 pb-1 text-center">
-              <span className="text-xs text-muted-foreground">
-                + {rest} item{rest !== 1 ? 'ns' : ''} — acesse /animals para ver todos
-              </span>
+              {moreHref ? (
+                <Link
+                  href={moreHref}
+                  className="text-xs text-primary hover:underline"
+                >
+                  + {rest} item{rest !== 1 ? 'ns' : ''} — ver todos
+                </Link>
+              ) : (
+                <span className="text-xs text-muted-foreground">
+                  + {rest} item{rest !== 1 ? 'ns' : ''} — acesse /animals para ver todos
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -290,11 +300,13 @@ export function ManagementTodayClient({ overview }: { overview: ManagementOvervi
 
         {sections.weaning.length > 0 && (
           <Section title="Desmama" icon={Scissors} iconColor="bg-green-600"
-            items={sections.weaning} emptyMessage="Nenhum bezerro para desmamar." onSheet={setActiveSheet} />
+            items={sections.weaning} emptyMessage="Nenhum bezerro para desmamar."
+            limit={50} moreHref="/animals?category=CALF" onSheet={setActiveSheet} />
         )}
 
         <Section title="Bezerros e Cadastros Incompletos" icon={Baby} iconColor="bg-green-600"
-          items={sections.calves} emptyMessage="Cadastros completos." onSheet={setActiveSheet} />
+          items={sections.calves} emptyMessage="Cadastros completos."
+          limit={30} moreHref="/animals?category=CALF" onSheet={setActiveSheet} />
 
         {sections.registration.length > 0 && (
           <Section title="Cadastro Incompleto" icon={Layers2} iconColor="bg-zinc-500"
