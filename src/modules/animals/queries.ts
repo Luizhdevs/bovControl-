@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 import { subDays } from 'date-fns'
 import type { AnimalFiltersInput } from './schema'
 import type {
@@ -32,7 +33,7 @@ function agePresetToRange(preset: string): { gte?: Date; lte?: Date } | null {
 function buildAnimalWhere(
   farmId:  string,
   filters: Partial<AnimalFiltersInput>,
-) {
+): Prisma.AnimalWhereInput {
   const {
     search,
     sex,
@@ -132,7 +133,7 @@ function buildAnimalWhere(
     ...purposeFilter,
     ...lotFilter,
     ...(andConditions.length > 0 && { AND: andConditions }),
-  }
+  } as Prisma.AnimalWhereInput
 }
 
 const ANIMAL_LIST_SELECT = {
@@ -162,7 +163,7 @@ const ANIMAL_LIST_SELECT = {
   _count: {
     select: { photos: true },
   },
-}
+} satisfies Prisma.AnimalSelect
 
 // ─── Listagem paginada ────────────────────────────────────
 
