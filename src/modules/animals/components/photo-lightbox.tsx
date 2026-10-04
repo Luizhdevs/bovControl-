@@ -2,15 +2,17 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createPortal }                from 'react-dom'
-import { X, ChevronLeft, ChevronRight } from 'lucide-react'
-import { cn }                          from '@/lib/utils'
-import { formatDate }                  from '@/lib/utils'
+import { X, ChevronLeft, ChevronRight, Star } from 'lucide-react'
+import { cn, formatDate }              from '@/lib/utils'
+import { SetPrimaryButton }            from './set-primary-button'
 
 export type LightboxPhoto = {
-  id:      string
-  url:     string
-  caption: string | null
-  takenAt: Date
+  id:        string
+  url:       string
+  caption:   string | null
+  takenAt:   Date
+  isPrimary?: boolean
+  farmId?:    string
 }
 
 interface PhotoLightboxProps {
@@ -132,16 +134,33 @@ export function PhotoLightbox({ photos, initialIndex, onClose }: PhotoLightboxPr
       )}
 
       {/* Info + contador — parte de baixo */}
-      <div className="absolute bottom-0 left-0 right-0 px-5 pb-6 pt-8 bg-gradient-to-t from-black/60 to-transparent pointer-events-none">
-        <div className="flex items-end justify-between">
-          <div>
+      <div className="absolute bottom-0 left-0 right-0 px-5 pb-6 pt-8 bg-gradient-to-t from-black/70 to-transparent">
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0">
             {photo.caption && (
-              <p className="text-white text-sm italic mb-0.5">"{photo.caption}"</p>
+              <p className="text-white text-sm italic mb-0.5 truncate">"{photo.caption}"</p>
             )}
             <p className="text-white/60 text-xs">{formatDate(photo.takenAt)}</p>
+            {/* Botão principal — apenas quando farmId disponível */}
+            {photo.farmId && (
+              <div className="mt-1.5 pointer-events-auto" onClick={e => e.stopPropagation()}>
+                {photo.isPrimary ? (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-amber-400 font-medium">
+                    <Star className="size-3 fill-amber-400" />
+                    Foto principal
+                  </span>
+                ) : (
+                  <SetPrimaryButton
+                    photoId={photo.id}
+                    farmId={photo.farmId}
+                    isPrimary={false}
+                  />
+                )}
+              </div>
+            )}
           </div>
           {hasMany && (
-            <span className="text-white/50 text-xs tabular-nums">{index + 1} / {photos.length}</span>
+            <span className="text-white/50 text-xs tabular-nums shrink-0">{index + 1} / {photos.length}</span>
           )}
         </div>
       </div>

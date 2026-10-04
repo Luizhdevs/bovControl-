@@ -2,10 +2,10 @@
 
 import { useState }  from 'react'
 import Image         from 'next/image'
-import { formatDate, formatRelativeDate, cn } from '@/lib/utils'
-import { getCategoryLabel } from '@/modules/shared/domain/animal-labels'
-import { ImageIcon, Star, Expand } from 'lucide-react'
+import { formatDate, cn } from '@/lib/utils'
+import { ImageIcon, Expand, Star, Trash2 } from 'lucide-react'
 import { PhotoDeleteButton } from './photo-delete-button'
+import { SetPrimaryButton }  from './set-primary-button'
 import { PhotoLightbox, type LightboxPhoto } from './photo-lightbox'
 
 // ─── Tipos ─────────────────────────────────────────────────
@@ -27,112 +27,10 @@ export type TimelineContext = {
 
 interface AnimalTimelineProps {
   photos:    TimelinePhoto[]
-  context:   TimelineContext   // Contexto atual (category, lot, sex)
+  context:   TimelineContext
   animalTag: string
   farmId:    string
   canDelete: boolean
-}
-
-// ─── Item da timeline ──────────────────────────────────────
-
-interface TimelineItemProps {
-  photo:        TimelinePhoto
-  context:      TimelineContext
-  isLast:       boolean
-  farmId:       string
-  canDelete:    boolean
-  onOpenLightbox: () => void
-}
-
-function TimelineItem({ photo, context, isLast, farmId, canDelete, onOpenLightbox }: TimelineItemProps) {
-  const displayUrl = photo.thumbnailUrl ?? photo.url
-
-  return (
-    <div className="relative flex gap-3">
-      {/* Linha vertical da timeline */}
-      <div className="flex flex-col items-center shrink-0">
-        <div
-          className={cn(
-            'size-3 rounded-full border-2 mt-2 shrink-0 z-10',
-            photo.isPrimary
-              ? 'bg-primary border-primary'
-              : 'bg-muted-foreground/30 border-muted-foreground/50',
-          )}
-        />
-        {!isLast && (
-          <div className="w-px flex-1 bg-border/60 mt-1" />
-        )}
-      </div>
-
-      {/* Conteúdo do item */}
-      <div className="flex-1 pb-5">
-        {/* Cabeçalho: data + indicadores */}
-        <div className="flex items-center gap-2 mb-2">
-          <time className="text-xs font-medium text-muted-foreground">
-            {formatDate(photo.takenAt)}
-          </time>
-          <span className="text-muted-foreground/40 text-xs">·</span>
-          <span className="text-xs text-muted-foreground/60">
-            {formatRelativeDate(photo.takenAt)}
-          </span>
-          {photo.isPrimary && (
-            <span className="ml-auto flex items-center gap-1 text-[10px] text-primary">
-              <Star className="size-3" />
-              Principal
-            </span>
-          )}
-        </div>
-
-        {/* Foto — clicável para abrir lightbox */}
-        <button
-          type="button"
-          onClick={onOpenLightbox}
-          className="relative w-full aspect-[4/3] rounded-xl overflow-hidden bg-muted mb-2 group block cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          <Image
-            src={displayUrl}
-            alt={photo.caption ?? `Foto de ${formatDate(photo.takenAt)}`}
-            fill
-            sizes="(max-width: 640px) 100vw, 400px"
-            className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-          />
-          {/* Overlay hint */}
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-200 flex items-center justify-center">
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 size-10 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center">
-              <Expand className="size-5 text-white" />
-            </div>
-          </div>
-        </button>
-
-        {/* Contexto do momento */}
-        <div className="flex flex-wrap items-center gap-2 mb-1.5">
-          <span className="text-xs text-muted-foreground">
-            {getCategoryLabel(context.category, context.sex)}
-          </span>
-          {context.lotName && (
-            <>
-              <span className="text-muted-foreground/40 text-xs">·</span>
-              <span className="text-xs text-muted-foreground">
-                {context.lotName}
-              </span>
-            </>
-          )}
-        </div>
-
-        {/* Caption */}
-        {photo.caption && (
-          <p className="text-sm text-foreground/80 leading-snug italic mb-1.5">
-            "{photo.caption}"
-          </p>
-        )}
-
-        {/* Botão de exclusão — apenas OWNER/MANAGER */}
-        {canDelete && (
-          <PhotoDeleteButton photoId={photo.id} farmId={farmId} />
-        )}
-      </div>
-    </div>
-  )
 }
 
 // ─── Estado vazio ──────────────────────────────────────────
@@ -146,8 +44,90 @@ function EmptyTimeline() {
       <div>
         <p className="text-sm font-medium text-foreground">Nenhuma foto ainda</p>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Adicione fotos para construir a linha do tempo visual
+          Adicione fotos para construir o histórico visual
         </p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Card de foto individual ────────────────────────────────
+
+interface PhotoCardProps {
+  photo:      TimelinePhoto
+  index:      number
+  farmId:     string
+  canDelete:  boolean
+  onOpen:     () => void
+  large?:     boolean
+}
+
+function PhotoCard({ photo, farmId, canDelete, onOpen, large }: PhotoCardProps) {
+  const src = photo.thumbnailUrl ?? photo.url
+
+  return (
+    <div className="group relative flex flex-col gap-1.5">
+      {/* Imagem clicável */}
+      <button
+        type="button"
+        onClick={onOpen}
+        className={cn(
+          'relative w-full overflow-hidden rounded-xl bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-zoom-in',
+          large ? 'aspect-[16/9]' : 'aspect-square',
+        )}
+      >
+        <Image
+          src={src}
+          alt={photo.caption ?? `Foto de ${formatDate(photo.takenAt)}`}
+          fill
+          sizes={large
+            ? '(max-width: 640px) 100vw, 600px'
+            : '(max-width: 640px) 50vw, 200px'}
+          className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+        />
+
+        {/* Overlay expand */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+          <div className="opacity-0 group-hover:opacity-100 transition-opacity size-9 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center">
+            <Expand className="size-4 text-white" />
+          </div>
+        </div>
+
+        {/* Badge principal — canto superior esquerdo */}
+        {photo.isPrimary && (
+          <div className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-semibold text-white shadow">
+            <Star className="size-2.5 fill-white" />
+            Principal
+          </div>
+        )}
+      </button>
+
+      {/* Rodapé do card */}
+      <div className="flex items-center justify-between gap-2 px-0.5">
+        <div className="min-w-0">
+          <p className="text-xs text-muted-foreground truncate">
+            {formatDate(photo.takenAt)}
+          </p>
+          {photo.caption && (
+            <p className="text-xs text-foreground/70 italic truncate">
+              {photo.caption}
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <SetPrimaryButton
+            photoId={photo.id}
+            farmId={farmId}
+            isPrimary={photo.isPrimary}
+          />
+          {canDelete && (
+            <PhotoDeleteButton
+              photoId={photo.id}
+              farmId={farmId}
+            />
+          )}
+        </div>
       </div>
     </div>
   )
@@ -155,52 +135,68 @@ function EmptyTimeline() {
 
 // ─── Componente principal ──────────────────────────────────
 
-/**
- * Timeline visual de fotos do animal.
- *
- * Exibe as fotos em ordem cronológica decrescente (mais recente primeiro).
- * Cada item mostra: data, foto, categoria/lote no contexto atual, caption.
- *
- * Futuramente: o context poderá ser histórico por data (quando houver
- * rastreamento de mudança de lote/categoria por foto).
- */
-export function AnimalTimeline({ photos, context, animalTag, farmId, canDelete }: AnimalTimelineProps) {
+export function AnimalTimeline({ photos, context: _context, animalTag, farmId, canDelete }: AnimalTimelineProps) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
 
-  if (photos.length === 0) {
-    return <EmptyTimeline />
-  }
+  if (photos.length === 0) return <EmptyTimeline />
 
+  // Ordena: mais recente primeiro
   const sorted: TimelinePhoto[] = [...photos].sort((a, b) => +b.takenAt - +a.takenAt)
 
+  // Foto principal em destaque; se não houver, usa a primeira (mais recente)
+  const primaryIdx = sorted.findIndex(p => p.isPrimary)
+  const heroIdx    = primaryIdx >= 0 ? primaryIdx : 0
+  const hero       = sorted[heroIdx]!
+  const rest       = sorted.filter((_, i) => i !== heroIdx)
+
   const lightboxPhotos: LightboxPhoto[] = sorted.map((p) => ({
-    id:      p.id,
-    url:     p.url,
-    caption: p.caption,
-    takenAt: p.takenAt,
+    id:        p.id,
+    url:       p.url,
+    caption:   p.caption,
+    takenAt:   p.takenAt,
+    isPrimary: p.isPrimary,
+    farmId,
   }))
+
+  // Índice no array sorted — necessário para abrir o lightbox na foto certa
+  function sortedIndex(photo: TimelinePhoto) {
+    return sorted.findIndex(p => p.id === photo.id)
+  }
 
   return (
     <>
-      <div>
-        <p className="text-xs text-muted-foreground mb-4">
-          {sorted.length} {sorted.length === 1 ? 'registro' : 'registros'} fotográficos de{' '}
+      <div className="space-y-4">
+        {/* Contador */}
+        <p className="text-xs text-muted-foreground">
+          {sorted.length} {sorted.length === 1 ? 'foto' : 'fotos'} de{' '}
           <span className="font-mono font-medium">{animalTag}</span>
         </p>
 
-        <div>
-          {sorted.map((photo, index) => (
-            <TimelineItem
-              key={photo.id}
-              photo={photo}
-              context={context}
-              isLast={index === sorted.length - 1}
-              farmId={farmId}
-              canDelete={canDelete}
-              onOpenLightbox={() => setLightboxIndex(index)}
-            />
-          ))}
-        </div>
+        {/* Foto principal em destaque (full-width) */}
+        <PhotoCard
+          photo={hero}
+          index={heroIdx}
+          farmId={farmId}
+          canDelete={canDelete}
+          onOpen={() => setLightboxIndex(heroIdx)}
+          large
+        />
+
+        {/* Grid 2 colunas para o restante */}
+        {rest.length > 0 && (
+          <div className="grid grid-cols-2 gap-3">
+            {rest.map((photo) => (
+              <PhotoCard
+                key={photo.id}
+                photo={photo}
+                index={sortedIndex(photo)}
+                farmId={farmId}
+                canDelete={canDelete}
+                onOpen={() => setLightboxIndex(sortedIndex(photo))}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {lightboxIndex !== null && (

@@ -425,6 +425,53 @@ export async function deleteAnimalPhoto(
   }
 }
 
+// ─── Definir foto como principal ──────────────────────────
+
+export async function setPhotoAsPrimary(
+  photoId: string,
+  farmId:  string,
+): Promise<ActionResult<void>> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado' }
+
+    await requireFarmAccess(session.user.id, farmId, 'WORKER')
+
+    const photo = await prisma.animalPhoto.findFirst({
+      where: { id: photoId, animal: { farmId } },
+      select: { id: true, animalId: true, isPrimary: true },
+    })
+    if (!photo) return { success: false, error: 'Foto não encontrada' }
+    if (photo.isPrimary) return { success: true, data: undefined }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.animalPhoto.updateMany({
+        where: { animalId: photo.animalId },
+        data:  { isPrimary: false },
+      })
+      await tx.animalPhoto.update({
+        where: { id: photoId },
+        data:  { isPrimary: true },
+      })
+    })
+
+    auditLog({
+      farmId,
+      userId:   session.user.id,
+      action:   'UPDATE',
+      entity:   'AnimalPhoto',
+      entityId: photoId,
+      metadata: { set_primary: true, animalId: photo.animalId },
+    })
+
+    revalidatePath(`/animals/${photo.animalId}`)
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[setPhotoAsPrimary]', error)
+    return { success: false, error: 'Erro ao definir foto principal.' }
+  }
+}
+
 // ─── Pesagem rápida ────────────────────────────────────────
 
 export async function addWeightRecord(
