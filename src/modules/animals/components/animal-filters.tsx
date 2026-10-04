@@ -21,7 +21,6 @@ const STATUS_OPTIONS = [
   { label: 'Vendidas',     value: 'SOLD'        },
   { label: 'Mortas',       value: 'DEAD'        },
   { label: 'Transferidas', value: 'TRANSFERRED' },
-  { label: 'Todas',        value: 'ALL'         },
 ]
 
 const SEX_OPTIONS = [
@@ -51,7 +50,20 @@ const AGE_OPTIONS = [
 interface LotOption     { id: string; name: string }
 interface PastureOption { id: string; name: string }
 
-// Conta quantos filtros estão ativos (excluindo busca e status=ACTIVE padrão)
+type LocalFilters = {
+  status:    string[]   // vazio = ALL (sem filtro de status)
+  category:  string[]
+  sex:       string[]
+  agePreset: string[]
+  lotId:     string[]
+  pastureId: string[]
+}
+
+function parseParam(val: string | null): string[] {
+  if (!val || val === 'ACTIVE') return val === 'ACTIVE' ? ['ACTIVE'] : []
+  return val.split(',').map(s => s.trim()).filter(Boolean)
+}
+
 function countActiveFilters(params: URLSearchParams): number {
   let n = 0
   if (params.get('sex'))       n++
@@ -127,50 +139,92 @@ export function AnimalFilters({
   const [isPending, startTransition] = useTransition()
   const [open, setOpen] = useState(false)
 
-  const search    = params.get('search')    ?? ''
-  const sex       = params.get('sex')       ?? ''
-  const category  = params.get('category')  ?? ''
-  const status    = params.get('status')    ?? 'ACTIVE'
-  const lotId     = params.get('lotId')     ?? ''
-  const pastureId = params.get('pastureId') ?? ''
-  const agePreset = params.get('agePreset') ?? ''
+  // Estado local da sheet — só navega ao clicar "Ver resultados"
+  const [local, setLocal] = useState<LocalFilters>({
+    status:    ['ACTIVE'],
+    category:  [],
+    sex:       [],
+    agePreset: [],
+    lotId:     [],
+    pastureId: [],
+  })
 
+  const search      = params.get('search')    ?? ''
   const activeCount = countActiveFilters(params)
 
-  const updateFilter = useCallback(
-    (key: string, value: string) => {
-      const next = new URLSearchParams(params.toString())
-      if (value) next.set(key, value)
-      else next.delete(key)
-      next.delete('page')
-      startTransition(() => {
-        router.replace(`${pathname}?${next.toString()}`)
+  // Ao abrir a sheet, inicializa estado local a partir dos params atuais
+  function handleOpenChange(next: boolean) {
+    if (next) {
+      const statusRaw = params.get('status')
+      setLocal({
+        status:    statusRaw ? statusRaw.split(',').filter(s => s !== 'ALL') : ['ACTIVE'],
+        category:  parseParam(params.get('category')),
+        sex:       parseParam(params.get('sex')),
+        agePreset: parseParam(params.get('agePreset')),
+        lotId:     parseParam(params.get('lotId')),
+        pastureId: parseParam(params.get('pastureId')),
       })
-    },
-    [params, pathname, router],
-  )
+    }
+    setOpen(next)
+  }
 
-  // Toggle: se já está ativo, limpa; senão aplica
-  const toggleFilter = useCallback(
-    (key: string, value: string, current: string) => {
-      updateFilter(key, current === value ? '' : value)
-    },
-    [updateFilter],
-  )
+  // Toggle um valor dentro de um campo multi-select
+  function toggle(field: keyof LocalFilters, value: string) {
+    setLocal(prev => {
+      const curr = prev[field]
+      const next = curr.includes(value)
+        ? curr.filter(v => v !== value)
+        : [...curr, value]
+      return { ...prev, [field]: next }
+    })
+  }
 
-  const clearAll = useCallback(() => {
-    const next = new URLSearchParams()
-    const s = params.get('search')
-    if (s) next.set('search', s)
+  // Aplica estado local na URL de uma vez (sem navegação por chip)
+  const applyFilters = useCallback(() => {
+    const next = new URLSearchParams(params.toString())
+
+    // Status: vazio = remover param (todos); senão junta em vírgula
+    if (local.status.length === 0) next.delete('status')
+    else next.set('status', local.status.join(','))
+
+    const setOrDelete = (key: string, vals: string[]) => {
+      if (vals.length === 0) next.delete(key)
+      else next.set(key, vals.join(','))
+    }
+    setOrDelete('category',  local.category)
+    setOrDelete('sex',       local.sex)
+    setOrDelete('agePreset', local.agePreset)
+    setOrDelete('lotId',     local.lotId)
+    setOrDelete('pastureId', local.pastureId)
+
+    next.delete('page')
     startTransition(() => {
       router.replace(`${pathname}?${next.toString()}`)
     })
     setOpen(false)
-  }, [params, pathname, router])
+  }, [local, params, pathname, router])
+
+  const clearAll = useCallback(() => {
+    setLocal({ status: [], category: [], sex: [], agePreset: [], lotId: [], pastureId: [] })
+  }, [])
 
   const handleSearch = useDebounce((value: string) => {
-    updateFilter('search', value)
+    const next = new URLSearchParams(params.toString())
+    if (value) next.set('search', value)
+    else next.delete('search')
+    next.delete('page')
+    startTransition(() => {
+      router.replace(`${pathname}?${next.toString()}`)
+    })
   }, 400)
+
+  const localActiveCount =
+    (local.status.length > 0 && !(local.status.length === 1 && local.status[0] === 'ACTIVE') ? 1 : 0) +
+    (local.category.length  > 0 ? 1 : 0) +
+    (local.sex.length       > 0 ? 1 : 0) +
+    (local.agePreset.length > 0 ? 1 : 0) +
+    (local.lotId.length     > 0 ? 1 : 0) +
+    (local.pastureId.length > 0 ? 1 : 0)
 
   return (
     <>
@@ -193,7 +247,7 @@ export function AnimalFilters({
         {/* Botão de filtro */}
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => handleOpenChange(true)}
           className={cn(
             'relative h-11 w-11 shrink-0 rounded-lg border flex items-center justify-center transition-colors',
             activeCount > 0
@@ -211,12 +265,12 @@ export function AnimalFilters({
       </div>
 
       {/* Sheet de filtros */}
-      <Sheet open={open} onOpenChange={setOpen}>
+      <Sheet open={open} onOpenChange={handleOpenChange}>
         <SheetContent side="bottom" className="rounded-t-2xl max-h-[90dvh] overflow-y-auto pb-8">
           <SheetHeader className="mb-5">
             <div className="flex items-center justify-between">
               <SheetTitle>Filtros</SheetTitle>
-              {activeCount > 0 && (
+              {localActiveCount > 0 && (
                 <button
                   type="button"
                   onClick={clearAll}
@@ -233,12 +287,17 @@ export function AnimalFilters({
 
             {/* Status */}
             <FilterSection title="Status">
+              <Chip
+                label="Todas"
+                active={local.status.length === 0}
+                onClick={() => setLocal(p => ({ ...p, status: [] }))}
+              />
               {STATUS_OPTIONS.map((opt) => (
                 <Chip
                   key={opt.value}
                   label={opt.label}
-                  active={status === opt.value}
-                  onClick={() => updateFilter('status', opt.value)}
+                  active={local.status.includes(opt.value)}
+                  onClick={() => toggle('status', opt.value)}
                 />
               ))}
             </FilterSection>
@@ -249,8 +308,8 @@ export function AnimalFilters({
                 <Chip
                   key={opt.value}
                   label={opt.label}
-                  active={category === opt.value}
-                  onClick={() => toggleFilter('category', opt.value, category)}
+                  active={local.category.includes(opt.value)}
+                  onClick={() => toggle('category', opt.value)}
                 />
               ))}
             </FilterSection>
@@ -261,8 +320,8 @@ export function AnimalFilters({
                 <Chip
                   key={opt.value}
                   label={opt.label}
-                  active={sex === opt.value}
-                  onClick={() => toggleFilter('sex', opt.value, sex)}
+                  active={local.sex.includes(opt.value)}
+                  onClick={() => toggle('sex', opt.value)}
                 />
               ))}
             </FilterSection>
@@ -273,8 +332,8 @@ export function AnimalFilters({
                 <Chip
                   key={opt.value}
                   label={opt.label}
-                  active={agePreset === opt.value}
-                  onClick={() => toggleFilter('agePreset', opt.value, agePreset)}
+                  active={local.agePreset.includes(opt.value)}
+                  onClick={() => toggle('agePreset', opt.value)}
                 />
               ))}
             </FilterSection>
@@ -284,15 +343,15 @@ export function AnimalFilters({
               <FilterSection title="Lote">
                 <Chip
                   label="Sem lote"
-                  active={lotId === 'none'}
-                  onClick={() => toggleFilter('lotId', 'none', lotId)}
+                  active={local.lotId.includes('none')}
+                  onClick={() => toggle('lotId', 'none')}
                 />
                 {lots.map((l) => (
                   <Chip
                     key={l.id}
                     label={l.name}
-                    active={lotId === l.id}
-                    onClick={() => toggleFilter('lotId', l.id, lotId)}
+                    active={local.lotId.includes(l.id)}
+                    onClick={() => toggle('lotId', l.id)}
                   />
                 ))}
               </FilterSection>
@@ -303,15 +362,15 @@ export function AnimalFilters({
               <FilterSection title="Pasto">
                 <Chip
                   label="Sem pasto"
-                  active={pastureId === 'none'}
-                  onClick={() => toggleFilter('pastureId', 'none', pastureId)}
+                  active={local.pastureId.includes('none')}
+                  onClick={() => toggle('pastureId', 'none')}
                 />
                 {pastures.map((p) => (
                   <Chip
                     key={p.id}
                     label={p.name}
-                    active={pastureId === p.id}
-                    onClick={() => toggleFilter('pastureId', p.id, pastureId)}
+                    active={local.pastureId.includes(p.id)}
+                    onClick={() => toggle('pastureId', p.id)}
                   />
                 ))}
               </FilterSection>
@@ -319,9 +378,10 @@ export function AnimalFilters({
 
             <Button
               className="w-full h-12 text-base mt-2"
-              onClick={() => setOpen(false)}
+              onClick={applyFilters}
+              disabled={isPending}
             >
-              Ver resultados
+              {isPending ? 'Carregando…' : 'Ver resultados'}
             </Button>
           </div>
         </SheetContent>

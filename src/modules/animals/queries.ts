@@ -12,11 +12,13 @@ import type {
 
 // ─── Builder de where clause ──────────────────────────────
 
-// Converte preset de idade em range de birthDate
-function agePresetToBirthDateRange(preset: string | undefined) {
-  if (!preset) return {}
+function splitFilter(val: string | undefined): string[] {
+  return val?.split(',').map(s => s.trim()).filter(Boolean) ?? []
+}
+
+function agePresetToRange(preset: string): { gte?: Date; lte?: Date } | null {
   const today = new Date()
-  const ranges: Record<string, { gte?: Date; lte?: Date }> = {
+  const map: Record<string, { gte?: Date; lte?: Date }> = {
     '0-30':    { gte: subDays(today, 30) },
     '30-90':   { gte: subDays(today, 90),  lte: subDays(today, 30) },
     '90-180':  { gte: subDays(today, 180), lte: subDays(today, 90) },
@@ -24,8 +26,7 @@ function agePresetToBirthDateRange(preset: string | undefined) {
     '365-730': { gte: subDays(today, 730), lte: subDays(today, 365) },
     '730+':    { lte: subDays(today, 730) },
   }
-  const range = ranges[preset]
-  return range ? { birthDate: range } : {}
+  return map[preset] ?? null
 }
 
 function buildAnimalWhere(
@@ -43,35 +44,94 @@ function buildAnimalWhere(
     agePreset,
   } = filters
 
-  // status 'ALL' = não filtrar por status
-  const effectiveStatus = status === 'ALL' ? undefined : status
+  // Parseia listas separadas por vírgula
+  const categories  = splitFilter(category)
+  const sexes       = splitFilter(sex)
+  const statuses    = splitFilter(status).filter(s => s !== 'ALL')
+  const agePresets  = splitFilter(agePreset)
+  const lotIds      = splitFilter(lotId)
+  const pastureIds  = splitFilter(pastureId)
+  const purposes    = splitFilter(purpose)
 
-  // lotId e pastureId são mutuamente exclusivos: pastureId filtra via lot.pastureId
-  const lotFilter =
-    pastureId === 'none' ? { lot: { is: null } }
-    : pastureId          ? { lot: { pastureId } }
-    : lotId === 'none'   ? { lotId: null }
-    : lotId              ? { lotId }
-    : {}
+  // Filtro de status — vazio = sem filtro (ALL)
+  const statusFilter = statuses.length === 0  ? {}
+    : statuses.length === 1                   ? { status: statuses[0] }
+    : { status: { in: statuses } }
 
-  return {
-    farmId,
-    ...(effectiveStatus && { status: effectiveStatus }),
-    ...(sex      && { sex }),
-    ...(category && { category }),
-    ...(purpose  && { purpose }),
-    ...lotFilter,
-    ...agePresetToBirthDateRange(agePreset),
-    ...(search && (() => {
-      const terms = search.split(',').map(t => t.trim()).filter(Boolean)
-      if (terms.length === 0) return {}
-      return {
+  // Filtro de categoria
+  const categoryFilter = categories.length === 0 ? {}
+    : categories.length === 1                    ? { category: categories[0] }
+    : { category: { in: categories } }
+
+  // Filtro de sexo
+  const sexFilter = sexes.length === 0 ? {}
+    : sexes.length === 1              ? { sex: sexes[0] }
+    : { sex: { in: sexes } }
+
+  // Filtro de finalidade
+  const purposeFilter = purposes.length === 0 ? {}
+    : purposes.length === 1                   ? { purpose: purposes[0] }
+    : { purpose: { in: purposes } }
+
+  // Filtro de lote/pasto (pasto tem precedência)
+  let lotFilter: object = {}
+  if (pastureIds.length > 0) {
+    const hasNone = pastureIds.includes('none')
+    const realIds = pastureIds.filter(id => id !== 'none')
+    if (hasNone && realIds.length > 0) {
+      lotFilter = { OR: [{ lot: { is: null } }, { lot: { pastureId: { in: realIds } } }] }
+    } else if (hasNone) {
+      lotFilter = { lot: { is: null } }
+    } else {
+      lotFilter = realIds.length === 1
+        ? { lot: { pastureId: realIds[0] } }
+        : { lot: { pastureId: { in: realIds } } }
+    }
+  } else if (lotIds.length > 0) {
+    const hasNone = lotIds.includes('none')
+    const realIds = lotIds.filter(id => id !== 'none')
+    if (hasNone && realIds.length > 0) {
+      lotFilter = { OR: [{ lotId: null }, { lotId: { in: realIds } }] }
+    } else if (hasNone) {
+      lotFilter = { lotId: null }
+    } else {
+      lotFilter = realIds.length === 1
+        ? { lotId: realIds[0] }
+        : { lotId: { in: realIds } }
+    }
+  }
+
+  // Condições AND opcionais (search e age preset usam OR interno)
+  const andConditions: object[] = []
+
+  if (agePresets.length === 1) {
+    const range = agePresetToRange(agePresets[0])
+    if (range) andConditions.push({ birthDate: range })
+  } else if (agePresets.length > 1) {
+    const ranges = agePresets.map(p => agePresetToRange(p)).filter(Boolean)
+    if (ranges.length > 0) andConditions.push({ OR: ranges.map(r => ({ birthDate: r })) })
+  }
+
+  if (search) {
+    const terms = search.split(',').map(t => t.trim()).filter(Boolean)
+    if (terms.length > 0) {
+      andConditions.push({
         OR: terms.flatMap(t => [
           { tag:  { contains: t, mode: 'insensitive' as const } },
           { name: { contains: t, mode: 'insensitive' as const } },
         ]),
-      }
-    })()),
+      })
+    }
+  }
+
+  return {
+    farmId,
+    ...statusFilter,
+    ...categoryFilter,
+    ...sexFilter,
+    ...purposeFilter,
+    ...lotFilter,
+    ...(andConditions.length > 0 && { AND: andConditions }),
   }
 }
 
