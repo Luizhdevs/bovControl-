@@ -155,6 +155,9 @@ const ANIMAL_LIST_SELECT = {
       pasture:  { select: { id: true, name: true } },
     },
   },
+  mother: {
+    select: { id: true, tag: true, name: true },
+  },
   photos: {
     where:  { isPrimary: true },
     select: { url: true, thumbnailUrl: true },

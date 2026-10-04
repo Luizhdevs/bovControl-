@@ -110,7 +110,8 @@ export async function getLotById(
             purpose:   true,
             breed:     true,
             birthDate: true,
-            lot: { select: { id: true, name: true, type: true } },
+            lot:    { select: { id: true, name: true, type: true } },
+            mother: { select: { id: true, tag: true, name: true } },
             photos: {
               where:  { isPrimary: true },
               select: { url: true, thumbnailUrl: true },
@@ -194,7 +195,8 @@ export async function getAnimalsAvailableForLot(
       purpose:   true,
       breed:     true,
       birthDate: true,
-      lot: { select: { id: true, name: true, type: true } },
+      lot:    { select: { id: true, name: true, type: true } },
+      mother: { select: { id: true, tag: true, name: true } },
       photos: {
         where:  { isPrimary: true },
         select: { url: true, thumbnailUrl: true },

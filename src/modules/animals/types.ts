@@ -20,6 +20,7 @@ export type AnimalListItem = {
   birthDate:               Date | null
   lastVeterinaryReportAt?: Date | null
   lot:                    Pick<Lot, 'id' | 'name' | 'type'> | null
+  mother:                 Pick<Animal, 'id' | 'tag' | 'name'> | null
   primaryPhoto:           Pick<AnimalPhoto, 'url' | 'thumbnailUrl'> | null
   _count:                 { photos: number }
 }

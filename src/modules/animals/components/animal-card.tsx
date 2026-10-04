@@ -10,7 +10,7 @@ import type { AnimalListItem } from '../types'
 // ─── Constantes ────────────────────────────────────────────
 
 export const DESKTOP_COLS =
-  '[grid-template-columns:36px_96px_minmax(160px,1fr)_96px_110px_140px_20px]'
+  '[grid-template-columns:36px_96px_minmax(120px,1fr)_96px_80px_minmax(100px,0.7fr)_130px_20px]'
 
 const CATEGORY_COLORS: Record<string, string> = {
   COW:    'bg-purple-500/15 text-purple-400 border-purple-500/30',
@@ -221,7 +221,16 @@ export function AnimalCard({ animal, isSelected = false, onSelect, showCheckbox 
             </Badge>
           </div>
 
-          <span className="text-xs text-muted-foreground truncate">{animal.breed}</span>
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {age ?? '—'}
+          </span>
+
+          <span className="text-xs text-muted-foreground truncate">
+            {animal.mother
+              ? (animal.mother.name ?? animal.mother.tag)
+              : <span className="text-muted-foreground/30">—</span>
+            }
+          </span>
 
           <div className="min-w-0">
             <span className={cn('text-xs truncate block', animal.lot ? lotColor : 'text-muted-foreground/40')}>

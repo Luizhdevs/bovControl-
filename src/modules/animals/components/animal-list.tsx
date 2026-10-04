@@ -157,7 +157,8 @@ export function AnimalList({ animals, isFiltered, lots, farmId }: AnimalListProp
             <div>Brinco</div>
             <div>Nome</div>
             <div>Categoria</div>
-            <div>Raça</div>
+            <div>Idade</div>
+            <div>Mãe</div>
             <div>Lote</div>
             <div />
           </div>
