@@ -18,20 +18,24 @@ import type { ActionResult } from './types'
 /**
  * Calcula a próxima data sugerida automaticamente quando não fornecida:
  * - INSEMINATION / NATURAL_MATING → +45 dias (diagnóstico de gestação)
- * - PREGNANCY_CHECK CONFIRMED     → data do DG + (280 - gestacaoDias)
- *   Se gestacaoDias não for informado assume 0 (= data do DG + 280 dias)
+ * - PREGNANCY_CHECK CONFIRMED     → em ordem de precedência:
+ *     1. coberturaDate + 280 dias (data de concepção informada pelo vet)
+ *     2. data do DG + (280 - gestacaoDias)
+ *     3. data do DG + 280 (fallback sem informações adicionais)
  * - demais                        → null
  */
 function calcNextCheckDate(
-  type:         string,
-  status:       string,
-  from:         Date,
+  type:          string,
+  status:        string,
+  from:          Date,
   gestacaoDias?: number | null,
+  coberturaDate?: Date | null,
 ): Date | null {
   if (type === 'INSEMINATION' || type === 'NATURAL_MATING') {
     return addDays(from, 45)
   }
   if (type === 'PREGNANCY_CHECK' && status === 'CONFIRMED') {
+    if (coberturaDate) return addDays(coberturaDate, 280)
     return addDays(from, 280 - (gestacaoDias ?? 0))
   }
   return null
@@ -71,11 +75,11 @@ export async function registerReproduction(
     const guard = canRegisterReproduction(animal)
     if (!guard.allowed) return { success: false, error: guard.reason }
 
-    const { animalId, type, date, status, bullName, nextCheckDate, gestacaoDias, result, notes } = parsed.data
+    const { animalId, type, date, status, bullName, nextCheckDate, gestacaoDias, coberturaDate, result, notes } = parsed.data
 
-    // Usa nextCheckDate informado ou calcula automaticamente (com dias de gestação do vet)
+    // Usa nextCheckDate informado ou calcula automaticamente (cobertura > dias > fallback)
     const resolvedNextCheckDate =
-      nextCheckDate ?? calcNextCheckDate(type, status, date, gestacaoDias)
+      nextCheckDate ?? calcNextCheckDate(type, status, date, gestacaoDias, coberturaDate)
 
     const shouldCreateAlert = type === 'PREGNANCY_CHECK' && status === 'CONFIRMED'
     const calvingDate       = shouldCreateAlert

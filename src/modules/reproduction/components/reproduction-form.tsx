@@ -65,6 +65,7 @@ export function ReproductionForm({
       bullName:      null,
       nextCheckDate: null,
       gestacaoDias:  null,
+      coberturaDate: null,
       result:        null,
       notes:         null,
     },
@@ -77,11 +78,14 @@ export function ReproductionForm({
   const selectedAnimalId = watch('animalId')
   const selectedAnimal   = animals.find((a) => a.id === selectedAnimalId)
 
-  const isDGConfirmado = selectedType === 'PREGNANCY_CHECK' && selectedStatus === 'CONFIRMED'
+  const coberturaDate    = watch('coberturaDate')
+  const isDGConfirmado   = selectedType === 'PREGNANCY_CHECK' && selectedStatus === 'CONFIRMED'
 
-  // Previsão de parto calculada em tempo real para mostrar ao usuário
+  // Previsão calculada em tempo real: coberturaDate + 280 > DG + (280 - dias) > null
   const previsaoCalculada = isDGConfirmado && selectedDate
-    ? addDays(selectedDate, 280 - (gestacaoDias ?? 0))
+    ? coberturaDate
+      ? addDays(coberturaDate, 280)
+      : addDays(selectedDate, 280 - (gestacaoDias ?? 0))
     : null
 
   // Filtragem local
@@ -272,35 +276,66 @@ export function ReproductionForm({
         </div>
       )}
 
-      {/* Dias de gestação — só aparece em DG CONFIRMED */}
+      {/* Dados do veterinário — só aparecem em DG CONFIRMED */}
       {isDGConfirmado && (
-        <div className="space-y-2">
-          <Label>
-            Dias de gestação
-            <span className="text-muted-foreground font-normal ml-1">(informado pelo veterinário)</span>
-          </Label>
-          <Controller
-            control={control}
-            name="gestacaoDias"
-            render={({ field }) => (
-              <Input
-                type="number"
-                min={1}
-                max={279}
-                placeholder="Ex: 60"
-                value={field.value ?? ''}
-                onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}
-                style={{ fontSize: '16px' }}
-              />
-            )}
-          />
-          {previsaoCalculada && (
-            <p className="text-xs text-emerald-500">
-              Previsão de parto calculada: {format(previsaoCalculada, 'dd/MM/yyyy')}
+        <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-4">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Dados do veterinário (opcional)
+          </p>
+
+          {/* Data da cobertura */}
+          <div className="space-y-2">
+            <Label>Data da cobertura / concepção</Label>
+            <Controller
+              control={control}
+              name="coberturaDate"
+              render={({ field }) => (
+                <Input
+                  type="date"
+                  value={field.value ? format(field.value as Date, 'yyyy-MM-dd') : ''}
+                  onChange={(e) => field.onChange(e.target.valueAsDate ?? null)}
+                  style={{ fontSize: '16px' }}
+                />
+              )}
+            />
+            <p className="text-xs text-muted-foreground">
+              Se o vet informar quando ocorreu a cobertura, use este campo.
             </p>
+          </div>
+
+          {/* Dias de gestação — alternativa à data */}
+          {!coberturaDate && (
+            <div className="space-y-2">
+              <Label>
+                Dias de gestação
+                <span className="text-muted-foreground font-normal ml-1">(alternativa à data acima)</span>
+              </Label>
+              <Controller
+                control={control}
+                name="gestacaoDias"
+                render={({ field }) => (
+                  <Input
+                    type="number"
+                    min={1}
+                    max={279}
+                    placeholder="Ex: 60"
+                    value={field.value ?? ''}
+                    onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}
+                    style={{ fontSize: '16px' }}
+                  />
+                )}
+              />
+              {errors.gestacaoDias && (
+                <p className="text-xs text-destructive">{errors.gestacaoDias.message}</p>
+              )}
+            </div>
           )}
-          {errors.gestacaoDias && (
-            <p className="text-xs text-destructive">{errors.gestacaoDias.message}</p>
+
+          {/* Preview da previsão */}
+          {previsaoCalculada && (
+            <p className="text-sm font-medium text-emerald-500">
+              Previsão de parto: {format(previsaoCalculada, 'dd/MM/yyyy')}
+            </p>
           )}
         </div>
       )}

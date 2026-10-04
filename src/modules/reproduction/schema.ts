@@ -29,6 +29,11 @@ export const reproductionSchema = z.object({
   // é calculada como: data do DG + (280 - gestacaoDias).
   gestacaoDias: z.coerce.number().int().min(1).max(279).optional().nullable(),
 
+  // Data da cobertura/concepção informada pelo veterinário.
+  // Quando preenchida, tem precedência sobre gestacaoDias:
+  // previsão de parto = coberturaDate + 280 dias.
+  coberturaDate: z.coerce.date().optional().nullable(),
+
   result: z.string().max(500).optional().nullable(),
 
   notes: z.string().max(1000, 'Máximo 1000 caracteres').optional().nullable(),
