@@ -18,19 +18,21 @@ import type { ActionResult } from './types'
 /**
  * Calcula a próxima data sugerida automaticamente quando não fornecida:
  * - INSEMINATION / NATURAL_MATING → +45 dias (diagnóstico de gestação)
- * - PREGNANCY_CHECK CONFIRMED    → +280 dias (previsão de parto)
+ * - PREGNANCY_CHECK CONFIRMED     → data do DG + (280 - gestacaoDias)
+ *   Se gestacaoDias não for informado assume 0 (= data do DG + 280 dias)
  * - demais                        → null
  */
 function calcNextCheckDate(
-  type:   string,
-  status: string,
-  from:   Date,
+  type:         string,
+  status:       string,
+  from:         Date,
+  gestacaoDias?: number | null,
 ): Date | null {
   if (type === 'INSEMINATION' || type === 'NATURAL_MATING') {
     return addDays(from, 45)
   }
   if (type === 'PREGNANCY_CHECK' && status === 'CONFIRMED') {
-    return addDays(from, 280)
+    return addDays(from, 280 - (gestacaoDias ?? 0))
   }
   return null
 }
@@ -69,11 +71,11 @@ export async function registerReproduction(
     const guard = canRegisterReproduction(animal)
     if (!guard.allowed) return { success: false, error: guard.reason }
 
-    const { animalId, type, date, status, bullName, nextCheckDate, result, notes } = parsed.data
+    const { animalId, type, date, status, bullName, nextCheckDate, gestacaoDias, result, notes } = parsed.data
 
-    // Usa nextCheckDate informado ou calcula automaticamente
+    // Usa nextCheckDate informado ou calcula automaticamente (com dias de gestação do vet)
     const resolvedNextCheckDate =
-      nextCheckDate ?? calcNextCheckDate(type, status, date)
+      nextCheckDate ?? calcNextCheckDate(type, status, date, gestacaoDias)
 
     const shouldCreateAlert = type === 'PREGNANCY_CHECK' && status === 'CONFIRMED'
     const calvingDate       = shouldCreateAlert

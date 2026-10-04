@@ -24,6 +24,11 @@ export const reproductionSchema = z.object({
   // OU previsão de parto (quando prenhez confirmada)
   nextCheckDate: z.coerce.date().optional().nullable(),
 
+  // Dias de gestação informados pelo veterinário no DG.
+  // Quando preenchido num PREGNANCY_CHECK CONFIRMED, a previsão de parto
+  // é calculada como: data do DG + (280 - gestacaoDias).
+  gestacaoDias: z.coerce.number().int().min(1).max(279).optional().nullable(),
+
   result: z.string().max(500).optional().nullable(),
 
   notes: z.string().max(1000, 'Máximo 1000 caracteres').optional().nullable(),

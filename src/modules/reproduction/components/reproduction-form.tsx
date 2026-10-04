@@ -4,7 +4,7 @@ import { useTransition, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useRouter } from 'next/navigation'
-import { format } from 'date-fns'
+import { format, addDays } from 'date-fns'
 import { useToast } from '@/hooks/use-toast'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -64,14 +64,25 @@ export function ReproductionForm({
       status:        'PENDING',
       bullName:      null,
       nextCheckDate: null,
+      gestacaoDias:  null,
       result:        null,
       notes:         null,
     },
   })
 
-  const selectedType    = watch('type')
+  const selectedType     = watch('type')
+  const selectedStatus   = watch('status')
+  const selectedDate     = watch('date')
+  const gestacaoDias     = watch('gestacaoDias')
   const selectedAnimalId = watch('animalId')
-  const selectedAnimal  = animals.find((a) => a.id === selectedAnimalId)
+  const selectedAnimal   = animals.find((a) => a.id === selectedAnimalId)
+
+  const isDGConfirmado = selectedType === 'PREGNANCY_CHECK' && selectedStatus === 'CONFIRMED'
+
+  // Previsão de parto calculada em tempo real para mostrar ao usuário
+  const previsaoCalculada = isDGConfirmado && selectedDate
+    ? addDays(selectedDate, 280 - (gestacaoDias ?? 0))
+    : null
 
   // Filtragem local
   const filtered = query.trim()
@@ -261,12 +272,47 @@ export function ReproductionForm({
         </div>
       )}
 
+      {/* Dias de gestação — só aparece em DG CONFIRMED */}
+      {isDGConfirmado && (
+        <div className="space-y-2">
+          <Label>
+            Dias de gestação
+            <span className="text-muted-foreground font-normal ml-1">(informado pelo veterinário)</span>
+          </Label>
+          <Controller
+            control={control}
+            name="gestacaoDias"
+            render={({ field }) => (
+              <Input
+                type="number"
+                min={1}
+                max={279}
+                placeholder="Ex: 60"
+                value={field.value ?? ''}
+                onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}
+                style={{ fontSize: '16px' }}
+              />
+            )}
+          />
+          {previsaoCalculada && (
+            <p className="text-xs text-emerald-500">
+              Previsão de parto calculada: {format(previsaoCalculada, 'dd/MM/yyyy')}
+            </p>
+          )}
+          {errors.gestacaoDias && (
+            <p className="text-xs text-destructive">{errors.gestacaoDias.message}</p>
+          )}
+        </div>
+      )}
+
       {/* Próxima data sugerida */}
       <div className="space-y-2">
         <Label>
           {selectedType === 'PREGNANCY_CHECK' ? 'Previsão de parto' : 'Próximo diagnóstico'}
           <span className="text-muted-foreground font-normal ml-1">
-            (opcional — calculado automaticamente)
+            {isDGConfirmado && gestacaoDias
+              ? '(calculada automaticamente — sobrescreva se necessário)'
+              : '(opcional — calculado automaticamente)'}
           </span>
         </Label>
         <Controller
@@ -277,6 +323,7 @@ export function ReproductionForm({
               type="date"
               value={field.value ? format(field.value as Date, 'yyyy-MM-dd') : ''}
               onChange={(e) => field.onChange(e.target.valueAsDate ?? null)}
+              placeholder={previsaoCalculada ? format(previsaoCalculada, 'yyyy-MM-dd') : undefined}
               style={{ fontSize: '16px' }}
             />
           )}
