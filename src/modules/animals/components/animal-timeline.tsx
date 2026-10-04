@@ -73,7 +73,7 @@ function PhotoCard({ photo, farmId, canDelete, onOpen, large }: PhotoCardProps) 
         onClick={onOpen}
         className={cn(
           'relative w-full overflow-hidden rounded-xl bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-zoom-in',
-          large ? 'aspect-[16/9]' : 'aspect-square',
+          large ? 'aspect-[4/3]' : 'aspect-[4/3]',
         )}
       >
         <Image
@@ -172,20 +172,19 @@ export function AnimalTimeline({ photos, context: _context, animalTag, farmId, c
           <span className="font-mono font-medium">{animalTag}</span>
         </p>
 
-        {/* Foto principal em destaque (full-width) */}
-        <PhotoCard
-          photo={hero}
-          index={heroIdx}
-          farmId={farmId}
-          canDelete={canDelete}
-          onOpen={() => setLightboxIndex(heroIdx)}
-          large
-        />
-
-        {/* Grid 2 colunas para o restante */}
-        {rest.length > 0 && (
-          <div className="grid grid-cols-2 gap-3">
-            {rest.map((photo) => (
+        {sorted.length === 1 ? (
+          /* Foto única: destaque full-width */
+          <PhotoCard
+            photo={hero}
+            index={heroIdx}
+            farmId={farmId}
+            canDelete={canDelete}
+            onOpen={() => setLightboxIndex(heroIdx)}
+          />
+        ) : (
+          /* 2+ fotos: grid 2 colunas em todas as telas */
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {sorted.map((photo) => (
               <PhotoCard
                 key={photo.id}
                 photo={photo}
