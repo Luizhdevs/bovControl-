@@ -76,8 +76,11 @@ export async function getAnimalsForReproduction(
 // ─── Animais prenhes — DISTINCT ON (1 query eficiente) ────
 
 /**
- * Usa DISTINCT ON para obter o último PREGNANCY_CHECK por animal.
- * Muito mais eficiente que a abordagem anterior (JavaScript groupBy).
+ * Retorna todas as vacas com prenhez confirmada, incluindo confirmadas via
+ * protocolo TE (DG P30+). Exclui animais que já pariram após a confirmação
+ * usando lastCalvingDate — necessário porque re-inseminações recentes (ex:
+ * TE Set/2026) fazem o NOT EXISTS da CALVING falhar quando o parto ocorreu
+ * antes da nova inseminação.
  *
  * @param limit  Se informado, retorna apenas os primeiros N mais próximos do parto.
  */
@@ -85,28 +88,28 @@ export async function getPregnantAnimals(
   farmId: string,
   limit?: number,
 ): Promise<UpcomingCalving[]> {
+  // ── Part 1: confirmadas via PREGNANCY_CHECK ────────────────
   type RawRow = {
-    animalId:      string
-    status:        string
-    confirmedAt:   Date
-    nextCheckDate: Date | null
-    tag:           string
-    name:          string | null
+    animalId:        string
+    status:          string
+    confirmedAt:     Date
+    nextCheckDate:   Date | null
+    tag:             string
+    name:            string | null
+    lastCalvingDate: Date | null
   }
 
-  // Subquery garante: (1) DISTINCT ON pega o ÚLTIMO check por animal,
-  // (2) filtro externo WHERE status='CONFIRMED' descarta animais cujo
-  // check mais recente foi FAILED — correto mesmo sem filtro JS.
   const rows = await prisma.$queryRaw<RawRow[]>`
     SELECT latest.*
     FROM (
       SELECT DISTINCT ON (r."animalId")
-        r."animalId"      AS "animalId",
+        r."animalId"         AS "animalId",
         r.status,
-        r.date            AS "confirmedAt",
+        r.date               AS "confirmedAt",
         r."nextCheckDate",
         a.tag,
-        a.name
+        a.name,
+        a."lastCalvingDate"
       FROM reproductions r
       JOIN animals a ON a.id = r."animalId"
       WHERE r.type = 'PREGNANCY_CHECK'
@@ -115,6 +118,10 @@ export async function getPregnantAnimals(
       ORDER BY r."animalId", r.date DESC
     ) latest
     WHERE latest.status = 'CONFIRMED'
+      AND NOT (
+        latest."lastCalvingDate" IS NOT NULL
+        AND latest."lastCalvingDate" >= latest."confirmedAt"
+      )
       AND NOT EXISTS (
         SELECT 1 FROM reproductions calv
         WHERE calv."animalId" = latest."animalId"
@@ -131,20 +138,72 @@ export async function getPregnantAnimals(
       )
   `
 
-  const today = new Date()
+  // ── Part 2: confirmadas via protocolo TE (DG P30+) ────────
+  // Inseminações TE com status CONFIRMED que ainda não pariram.
+  // A previsão usa prevParto do protocolo ou teDate + 280 dias.
+  type TERawRow = {
+    animalId:        string
+    teDate:          Date
+    tag:             string
+    name:            string | null
+    lastCalvingDate: Date | null
+    prevParto:       Date | null
+  }
 
-  const result = rows
+  const teRows = await prisma.$queryRaw<TERawRow[]>`
+    SELECT DISTINCT ON (r."animalId")
+      r."animalId"          AS "animalId",
+      r.date                AS "teDate",
+      a.tag,
+      a.name,
+      a."lastCalvingDate",
+      proto."prevParto"
+    FROM reproductions r
+    JOIN animals a ON a.id = r."animalId"
+    LEFT JOIN te_participations tp    ON tp."reproductionId" = r.id
+    LEFT JOIN te_protocols      proto ON proto.id = tp."protocolId"
+    WHERE r.type   = 'INSEMINATION'
+      AND r.status = 'CONFIRMED'
+      AND r."bullName" LIKE 'TE:%'
+      AND a."farmId" = ${farmId}
+      AND a.status   = 'ACTIVE'
+      AND NOT (
+        a."lastCalvingDate" IS NOT NULL
+        AND a."lastCalvingDate" >= r.date
+      )
+    ORDER BY r."animalId", r.date DESC
+  `
+
+  const today = new Date()
+  const regularAnimalIds = new Set(rows.map((r) => r.animalId))
+
+  const regularResults = rows.map((r) => ({
+    animalId:            r.animalId,
+    tag:                 r.tag,
+    name:                r.name,
+    expectedCalvingDate: r.nextCheckDate ?? addDays(r.confirmedAt, 280),
+    daysUntilCalving:    differenceInDays(
+      r.nextCheckDate ?? addDays(r.confirmedAt, 280),
+      today,
+    ),
+    confirmedAt: r.confirmedAt,
+  }))
+
+  const teResults = teRows
+    .filter((r) => !regularAnimalIds.has(r.animalId))
     .map((r) => ({
       animalId:            r.animalId,
       tag:                 r.tag,
       name:                r.name,
-      expectedCalvingDate: r.nextCheckDate ?? addDays(r.confirmedAt, 280),
+      expectedCalvingDate: r.prevParto ?? addDays(r.teDate, 280),
       daysUntilCalving:    differenceInDays(
-        r.nextCheckDate ?? addDays(r.confirmedAt, 280),
+        r.prevParto ?? addDays(r.teDate, 280),
         today,
       ),
-      confirmedAt: r.confirmedAt,
+      confirmedAt: r.teDate,
     }))
+
+  const result = [...regularResults, ...teResults]
     .sort((a, b) => a.daysUntilCalving - b.daysUntilCalving)
 
   return limit !== undefined ? result.slice(0, limit) : result
