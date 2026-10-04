@@ -120,7 +120,9 @@ export async function getPregnantAnimals(
     WHERE latest.status = 'CONFIRMED'
       AND NOT (
         latest."lastCalvingDate" IS NOT NULL
-        AND latest."lastCalvingDate" >= latest."confirmedAt"
+        AND latest."lastCalvingDate" BETWEEN
+          (latest."confirmedAt" - INTERVAL '90 days')
+          AND (latest."confirmedAt" + INTERVAL '90 days')
       )
       AND NOT EXISTS (
         SELECT 1 FROM reproductions calv
