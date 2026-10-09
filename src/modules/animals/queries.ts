@@ -269,7 +269,7 @@ export async function getLotsForSelect(farmId: string): Promise<LotSelectOption[
       name:        true,
       type:        true,
       maxCapacity: true,
-      _count:      { select: { animals: true } },
+      _count:      { select: { animals: { where: { status: 'ACTIVE' } } } },
     },
     orderBy: { name: 'asc' },
   })
