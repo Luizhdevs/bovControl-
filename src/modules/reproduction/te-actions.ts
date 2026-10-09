@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath }    from 'next/cache'
+import { addDays }           from 'date-fns'
 import { prisma }            from '@/lib/prisma'
 import { auth }              from '@/lib/auth'
 import { getActiveFarm }     from '@/lib/active-farm'
@@ -280,7 +281,8 @@ export async function updateDGResult(
         reproductionId: true,
         animalId:       true,
         status:         true,
-        reproduction:   { select: { status: true, result: true } },
+        reproduction:   { select: { status: true, result: true, date: true } },
+        protocol:       { select: { dgP60Start: true, prevParto: true } },
       },
     })
 
@@ -295,10 +297,16 @@ export async function updateDGResult(
     await prisma.$transaction(async (tx) => {
       // Atualizar Reproduction se existir
       if (participation.reproductionId) {
-        const nextCheckDate =
+        // nextCheckDate = data da próxima etapa esperada:
+        // DG_P30 confirmado → data do DG_P60 (ou TE + 60d)
+        // DG_P60 confirmado → data prevista de parto (ou TE + 280d)
+        const teDate = participation.reproduction?.date ?? new Date()
+        const nextCheckDate: Date | undefined =
           dgStage === 'DG_P30' && newStatus === 'CONFIRMED'
-            ? new Date('2026-11-14T12:00:00.000Z')
-            : undefined
+            ? (participation.protocol.dgP60Start ?? addDays(teDate, 60))
+          : dgStage === 'DG_P60' && newStatus === 'CONFIRMED'
+            ? (participation.protocol.prevParto  ?? addDays(teDate, 280))
+          : undefined
 
         await tx.reproduction.update({
           where: { id: participation.reproductionId },

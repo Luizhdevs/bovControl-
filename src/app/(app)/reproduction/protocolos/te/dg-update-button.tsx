@@ -4,34 +4,29 @@ import { useTransition, useState } from 'react'
 import { CheckCircle2, XCircle, Loader2, Ban } from 'lucide-react'
 import { updateDGResult, discontinueAnimal } from '@/modules/reproduction/te-actions'
 import type { DGStage } from '@/modules/reproduction/te-actions'
+import type { TECurrentStage } from '@/modules/reproduction/te-queries'
 
 // ─── Badge de status (somente leitura) ─────────────────────
 
-export function StatusBadge({
-  participationStatus,
-  dgStatus,
-}: {
-  participationStatus: 'ACTIVE' | 'DISCONTINUED' | 'COMPLETED'
-  dgStatus: 'PENDING' | 'CONFIRMED' | 'FAILED' | null
-}) {
-  if (participationStatus === 'DISCONTINUED') {
+export function StatusBadge({ stage }: { stage: TECurrentStage }) {
+  if (stage === 'DISCONTINUED') {
     return (
       <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-500/15 text-zinc-500 font-medium">
         Descontinuada
       </span>
     )
   }
-  if (participationStatus === 'COMPLETED' || dgStatus === 'CONFIRMED') {
+  if (stage === 'PRENHA') {
     return (
       <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium">
         Prenha ✓
       </span>
     )
   }
-  if (dgStatus === 'FAILED') {
+  if (stage === 'WAITING_P60') {
     return (
-      <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-600 dark:text-red-400 font-medium">
-        Vazia
+      <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-600 dark:text-violet-400 font-medium">
+        DG P30 ✓
       </span>
     )
   }
@@ -46,31 +41,22 @@ export function StatusBadge({
 
 interface DGButtonProps {
   participationId: string
-  dgStage:         DGStage
-  participationStatus: 'ACTIVE' | 'DISCONTINUED' | 'COMPLETED'
-  dgStatus:        'PENDING' | 'CONFIRMED' | 'FAILED' | null
+  currentDGStage:  TECurrentStage
 }
 
-export function DGUpdateButton({
-  participationId,
-  dgStage,
-  participationStatus,
-  dgStatus,
-}: DGButtonProps) {
-  const [mode, setMode]            = useState<'idle' | 'dg' | 'discontinue'>('idle')
-  const [pending, startTransition] = useTransition()
-  const [error, setError]          = useState<string | null>(null)
+export function DGUpdateButton({ participationId, currentDGStage }: DGButtonProps) {
+  const [mode, setMode]             = useState<'idle' | 'dg' | 'discontinue'>('idle')
+  const [reason, setReason]         = useState('')
+  const [pending, startTransition]  = useTransition()
+  const [error, setError]           = useState<string | null>(null)
 
-  // Só mostra ações se participação ainda ACTIVE e DG ainda PENDING
-  const canAct = participationStatus === 'ACTIVE' && (dgStatus === 'PENDING' || dgStatus === null)
+  // Só mostra ações para animais ainda aguardando DG
+  const canAct = currentDGStage === 'WAITING_P30' || currentDGStage === 'WAITING_P60'
+  const dgStage: DGStage = currentDGStage === 'WAITING_P60' ? 'DG_P60' : 'DG_P30'
+  const dgLabel = currentDGStage === 'WAITING_P60' ? 'DG P60' : 'DG P30'
 
   if (!canAct) {
-    return (
-      <StatusBadge
-        participationStatus={participationStatus}
-        dgStatus={dgStatus}
-      />
-    )
+    return <StatusBadge stage={currentDGStage} />
   }
 
   function handleDG(newStatus: 'CONFIRMED' | 'FAILED') {
@@ -85,8 +71,8 @@ export function DGUpdateButton({
   function handleDiscontinue() {
     setError(null)
     startTransition(async () => {
-      const result = await discontinueAnimal(participationId)
-      if (result.success) { setMode('idle') }
+      const result = await discontinueAnimal(participationId, reason.trim() || undefined)
+      if (result.success) { setMode('idle'); setReason('') }
       else { setError(result.error ?? 'Erro') }
     })
   }
@@ -119,14 +105,21 @@ export function DGUpdateButton({
             ✕
           </button>
         </div>
-        {error && <p className="text-xs text-destructive">{error}</p>}
+        {error && <p className="text-xs text-destructive text-right">{error}</p>}
       </div>
     )
   }
 
   if (mode === 'discontinue') {
     return (
-      <div className="flex flex-col gap-1 items-end">
+      <div className="flex flex-col gap-1.5 items-end w-40">
+        <input
+          type="text"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Motivo (opcional)"
+          className="w-full text-xs rounded-lg border border-border bg-background px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary"
+        />
         <div className="flex gap-1.5">
           <button
             disabled={pending}
@@ -138,7 +131,7 @@ export function DGUpdateButton({
           </button>
           <button
             disabled={pending}
-            onClick={() => setMode('idle')}
+            onClick={() => { setMode('idle'); setReason('') }}
             className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
           >
             ✕
@@ -155,14 +148,18 @@ export function DGUpdateButton({
       <div className="flex gap-1.5">
         <button
           onClick={() => setMode('dg')}
-          className="text-xs px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium hover:bg-amber-500/25 transition-colors"
+          className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${
+            dgStage === 'DG_P60'
+              ? 'bg-violet-500/15 text-violet-600 dark:text-violet-400 hover:bg-violet-500/25'
+              : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25'
+          }`}
         >
-          DG
+          {dgLabel}
         </button>
         <button
           onClick={() => setMode('discontinue')}
           className="text-xs px-2 py-0.5 rounded-full bg-zinc-500/10 text-zinc-500 hover:bg-zinc-500/20 transition-colors"
-          title="Descontinuar do protocolo"
+          title="Retirar do protocolo"
         >
           <Ban className="size-3" />
         </button>

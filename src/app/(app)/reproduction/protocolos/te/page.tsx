@@ -16,6 +16,7 @@ import {
 } from '@/modules/reproduction/te-queries'
 import { DGUpdateButton } from './dg-update-button'
 import { MigrateButton }  from './migrate-button'
+import type { TEParticipationEntry } from '@/modules/reproduction/te-queries'
 
 export const metadata = { title: 'Protocolos TE | BovControl' }
 
@@ -28,6 +29,41 @@ function fmtRange(start: Date | null | undefined, end: Date | null | undefined) 
   if (!start && !end) return '—'
   if (!end) return fmt(start)
   return `${fmt(start)} a ${fmt(end)}`
+}
+
+// ─── Linha de animal (reutilizada nas seções P30 e P60) ────
+
+function AnimalRow({ p }: { p: TEParticipationEntry }) {
+  return (
+    <div className="flex items-start justify-between px-4 py-3 gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <Link href={`/reproduction/${p.animalId}`} className="text-sm font-medium hover:underline">
+            {p.tag}
+          </Link>
+          {p.name && <span className="text-xs text-muted-foreground truncate">{p.name}</span>}
+        </div>
+        {(p.donor || p.ovaQuality || p.sexo) && (
+          <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1 flex-wrap">
+            {p.donor && <span>{p.donor}</span>}
+            {p.ovaQuality && <span>· {p.ovaQuality}</span>}
+            {p.sexo && (
+              <span className="rounded px-1 py-px bg-muted text-[10px] font-mono">{p.sexo}</span>
+            )}
+          </div>
+        )}
+        {p.dgResult && (
+          <div className="text-xs text-muted-foreground mt-0.5 italic">{p.dgResult}</div>
+        )}
+      </div>
+      <div className="shrink-0 pt-0.5">
+        <DGUpdateButton
+          participationId={p.participationId}
+          currentDGStage={p.currentDGStage}
+        />
+      </div>
+    </div>
+  )
 }
 
 // ─── Detalhe de um protocolo ────────────────────────────────
@@ -51,9 +87,11 @@ async function ProtocolDetail({
     )
   }
 
-  const active       = protocol.participations.filter((p) => p.participationStatus === 'ACTIVE')
-  const discontinued = protocol.participations.filter((p) => p.participationStatus === 'DISCONTINUED')
-  const completed    = protocol.participations.filter((p) => p.participationStatus === 'COMPLETED')
+  // Separar em 4 grupos por etapa
+  const waitingP30   = protocol.participations.filter((p) => p.currentDGStage === 'WAITING_P30')
+  const waitingP60   = protocol.participations.filter((p) => p.currentDGStage === 'WAITING_P60')
+  const completed    = protocol.participations.filter((p) => p.currentDGStage === 'PRENHA')
+  const discontinued = protocol.participations.filter((p) => p.currentDGStage === 'DISCONTINUED')
 
   return (
     <div className="space-y-4">
@@ -98,63 +136,50 @@ async function ProtocolDetail({
       </SectionCard>
 
       {/* Estatísticas */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-4 gap-2">
         <div className="rounded-xl border border-border bg-card p-3 text-center">
           <div className="text-xl font-bold text-emerald-500 tabular-nums">{completed.length}</div>
-          <div className="text-xs text-muted-foreground mt-0.5">Prenhes</div>
+          <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Prenhes</div>
         </div>
         <div className="rounded-xl border border-border bg-card p-3 text-center">
-          <div className="text-xl font-bold text-amber-500 tabular-nums">{active.length}</div>
-          <div className="text-xs text-muted-foreground mt-0.5">Aguardando</div>
+          <div className="text-xl font-bold text-amber-500 tabular-nums">{waitingP30.length}</div>
+          <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">DG P30</div>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-3 text-center">
+          <div className="text-xl font-bold text-violet-500 tabular-nums">{waitingP60.length}</div>
+          <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">DG P60</div>
         </div>
         <div className="rounded-xl border border-border bg-card p-3 text-center">
           <div className="text-xl font-bold text-zinc-400 tabular-nums">{discontinued.length}</div>
-          <div className="text-xs text-muted-foreground mt-0.5">Descont.</div>
+          <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Descont.</div>
         </div>
       </div>
 
-      {/* Lista de receptoras ativas */}
-      {active.length > 0 && (
-        <SectionCard title="Receptoras" subtitle={`${active.length} em acompanhamento`} noPadding>
+      {/* Receptoras aguardando DG P30 */}
+      {waitingP30.length > 0 && (
+        <SectionCard title="Aguardando DG P30" subtitle={`${waitingP30.length} receptora${waitingP30.length !== 1 ? 's' : ''}`} noPadding>
           <div className="divide-y divide-border/40">
-            {active.map((p) => (
-              <div key={p.participationId} className="flex items-start justify-between px-4 py-3 gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <Link href={`/reproduction/${p.animalId}`} className="text-sm font-medium hover:underline">
-                      {p.tag}
-                    </Link>
-                    {p.name && <span className="text-xs text-muted-foreground truncate">{p.name}</span>}
-                  </div>
-                  {(p.donor || p.ovaQuality) && (
-                    <div className="text-xs text-muted-foreground mt-0.5">
-                      {p.donor}{p.ovaQuality ? ` · ${p.ovaQuality}` : ''}
-                      {p.sexo && (
-                        <span className="ml-1.5 rounded px-1 py-px bg-muted text-[10px] font-mono">{p.sexo}</span>
-                      )}
-                    </div>
-                  )}
-                  {p.dgResult && (
-                    <div className="text-xs text-muted-foreground mt-0.5 italic">{p.dgResult}</div>
-                  )}
-                </div>
-                <div className="shrink-0 pt-0.5">
-                  <DGUpdateButton
-                    participationId={p.participationId}
-                    dgStage="DG_P30"
-                    participationStatus={p.participationStatus}
-                    dgStatus={p.dgStatus}
-                  />
-                </div>
-              </div>
+            {waitingP30.map((p) => (
+              <AnimalRow key={p.participationId} p={p} />
             ))}
           </div>
         </SectionCard>
       )}
 
-      {/* Prenhes confirmadas */}
+      {/* Receptoras aguardando DG P60 */}
+      {waitingP60.length > 0 && (
+        <SectionCard title="Aguardando DG P60" subtitle={`${waitingP60.length} · DG P30 ✓`} noPadding>
+          <div className="divide-y divide-border/40">
+            {waitingP60.map((p) => (
+              <AnimalRow key={p.participationId} p={p} />
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Prenhes confirmadas (DG P60) */}
       {completed.length > 0 && (
-        <SectionCard title="Prenhes confirmadas" subtitle={`${completed.length}`} noPadding>
+        <SectionCard title="Prenhes confirmadas" subtitle={`${completed.length} · DG P60 ✓`} noPadding>
           <div className="divide-y divide-border/40">
             {completed.map((p) => (
               <div key={p.participationId} className="flex items-center justify-between px-4 py-2.5 gap-3">
@@ -163,6 +188,9 @@ async function ProtocolDetail({
                     {p.tag}
                   </Link>
                   {p.name && <span className="text-xs text-muted-foreground">{p.name}</span>}
+                  {p.sexo && (
+                    <span className="rounded px-1 py-px bg-muted text-[10px] font-mono">{p.sexo}</span>
+                  )}
                 </div>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium shrink-0">
                   Prenha ✓

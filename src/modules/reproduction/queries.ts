@@ -243,20 +243,41 @@ export async function getAnimalReproductionSummary(
   const lastInsemination = events.find(
     (e) => e.type === 'INSEMINATION' || e.type === 'NATURAL_MATING',
   )
+  // Inseminação TE com status confirmado (DG P30 ou P60 já realizado)
+  const teConfirmed = events.find(
+    (e) => e.type === 'INSEMINATION' && e.status === 'CONFIRMED' && (e.bullName ?? '').startsWith('TE:'),
+  )
 
-  let pregnancyStatus: PregnancyStatus = 'unknown'
+  let pregnancyStatus:   PregnancyStatus = 'unknown'
+  let expectedCalvingDate: Date | null   = null
+
   if (lastCheck) {
-    if (lastCheck.status === 'CONFIRMED') pregnancyStatus = 'pregnant'
-    else if (lastCheck.status === 'FAILED') pregnancyStatus = 'not_pregnant'
+    if (lastCheck.status === 'CONFIRMED') {
+      pregnancyStatus     = 'pregnant'
+      expectedCalvingDate = lastCheck.nextCheckDate ?? addDays(lastCheck.date, 280)
+    } else if (lastCheck.status === 'FAILED') {
+      pregnancyStatus = 'not_pregnant'
+    }
+  } else if (teConfirmed) {
+    // Vaca TE com DG confirmado — busca data de parto prevista no protocolo
+    pregnancyStatus = 'pregnant'
+
+    const teParticipation = await prisma.tEParticipation.findFirst({
+      where:  { reproductionId: teConfirmed.id },
+      select: { protocol: { select: { prevParto: true } } },
+    })
+
+    expectedCalvingDate =
+      teParticipation?.protocol.prevParto   // prevParto do protocolo (mais preciso)
+      ?? teConfirmed.nextCheckDate          // nextCheckDate (definido ao confirmar DG P60)
+      ?? addDays(teConfirmed.date, 280)     // fallback: data TE + 280 dias
   }
 
   return {
     animal:              { ...animal, lot: animal.lot },
     pregnancyStatus,
-    lastCheckDate:       lastCheck?.date ?? null,
-    expectedCalvingDate: pregnancyStatus === 'pregnant'
-      ? (lastCheck?.nextCheckDate ?? addDays(lastCheck!.date, 280))
-      : null,
+    lastCheckDate:       lastCheck?.date ?? teConfirmed?.date ?? null,
+    expectedCalvingDate,
     lastInseminationDate: lastInsemination?.date ?? null,
     totalEvents,
   }

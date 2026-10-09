@@ -2,6 +2,13 @@ import { prisma } from '@/lib/prisma'
 
 // ─── Types ─────────────────────────────────────────────────
 
+/** Etapa atual de cada receptora no protocolo */
+export type TECurrentStage =
+  | 'WAITING_P30'   // TE feita, aguardando DG P30
+  | 'WAITING_P60'   // DG P30 confirmado, aguardando DG P60
+  | 'PRENHA'        // DG P60 confirmado
+  | 'DISCONTINUED'  // Retirada do protocolo
+
 export interface TEProtocolHeader {
   id:          string
   name:        string
@@ -36,6 +43,8 @@ export interface TEParticipationEntry {
   sexo:            string | null
   discontinuedAt:  Date | null
   discontinuedReason: string | null
+  /** Etapa calculada — fonte única de verdade para UI de ações */
+  currentDGStage:  TECurrentStage
 }
 
 export interface TEProtocolDetail extends TEProtocolHeader {
@@ -102,21 +111,33 @@ export async function getTEProtocolDetail(
 
   if (!protocol) return null
 
-  const participations: TEParticipationEntry[] = protocol.participations.map((p) => ({
-    participationId:     p.id,
-    reproductionId:      p.reproductionId,
-    animalId:            p.animal.id,
-    tag:                 p.animal.tag,
-    name:                p.animal.name,
-    participationStatus: p.status as 'ACTIVE' | 'DISCONTINUED' | 'COMPLETED',
-    dgStatus:            p.reproduction?.status as 'PENDING' | 'CONFIRMED' | 'FAILED' | null ?? null,
-    dgResult:            p.reproduction?.result ?? null,
-    donor:               p.donor,
-    ovaQuality:          p.ovaQuality,
-    sexo:                p.sexo,
-    discontinuedAt:      p.discontinuedAt,
-    discontinuedReason:  p.discontinuedReason,
-  }))
+  const participations: TEParticipationEntry[] = protocol.participations.map((p) => {
+    const partStatus = p.status as 'ACTIVE' | 'DISCONTINUED' | 'COMPLETED'
+    const dgStatus   = (p.reproduction?.status ?? null) as 'PENDING' | 'CONFIRMED' | 'FAILED' | null
+
+    const currentDGStage: TECurrentStage =
+      partStatus === 'DISCONTINUED'   ? 'DISCONTINUED' :
+      partStatus === 'COMPLETED'      ? 'PRENHA'       :
+      dgStatus   === 'CONFIRMED'      ? 'WAITING_P60'  :
+                                        'WAITING_P30'
+
+    return {
+      participationId:     p.id,
+      reproductionId:      p.reproductionId,
+      animalId:            p.animal.id,
+      tag:                 p.animal.tag,
+      name:                p.animal.name,
+      participationStatus: partStatus,
+      dgStatus,
+      dgResult:            p.reproduction?.result ?? null,
+      donor:               p.donor,
+      ovaQuality:          p.ovaQuality,
+      sexo:                p.sexo,
+      discontinuedAt:      p.discontinuedAt,
+      discontinuedReason:  p.discontinuedReason,
+      currentDGStage,
+    }
+  })
 
   const total        = participations.length
   const confirmed    = participations.filter((x) => x.participationStatus === 'COMPLETED').length

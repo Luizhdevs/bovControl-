@@ -13,6 +13,7 @@ import {
   getReproductionStats,
   getPregnantAnimals,
 } from '@/modules/reproduction/queries'
+import { getTEProtocolList } from '@/modules/reproduction/te-queries'
 import { prisma } from '@/lib/prisma'
 import { ReproductionQuickRegister } from '@/modules/reproduction/components/reproduction-quick-register'
 import { ExpectedCalvingCard } from '@/modules/reproduction/components/expected-calving-card'
@@ -24,7 +25,7 @@ export const metadata = { title: 'Reprodução | BovControl' }
 // ─── Conteúdo assíncrono ────────────────────────────────────
 
 async function ReproductionDashboardContent({ farmId }: { farmId: string }) {
-  const [animals, stats, pregnantAnimals, vaccineAlerts] = await Promise.all([
+  const [animals, stats, pregnantAnimals, vaccineAlerts, teProtocols] = await Promise.all([
     getAnimalsForReproduction(farmId),
     getReproductionStats(farmId),
     getPregnantAnimals(farmId),
@@ -44,6 +45,7 @@ async function ReproductionDashboardContent({ farmId }: { farmId: string }) {
       },
       orderBy: [{ dueDate: 'asc' }],
     }),
+    getTEProtocolList(farmId),
   ])
 
   // Próximos partos (30 dias)
@@ -134,19 +136,47 @@ async function ReproductionDashboardContent({ farmId }: { farmId: string }) {
       )}
 
       {/* Protocolo TE */}
-      <Link
-        href="/reproduction/protocolos/te"
-        className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 hover:bg-muted/30 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <FlaskConical className="size-5 text-violet-500 shrink-0" />
-          <div>
-            <div className="text-sm font-medium">Protocolo TE</div>
-            <div className="text-xs text-muted-foreground">OPU 10/09 · DG P30 em out/2026</div>
+      {teProtocols.length > 0 ? (
+        teProtocols.filter((p) => p.status === 'ACTIVE').slice(0, 1).map((proto) => {
+          const pendingCount = proto.pending
+          const completedCount = proto.confirmed
+          const subtitle = [
+            pendingCount   > 0 ? `${pendingCount} aguardando DG`     : null,
+            completedCount > 0 ? `${completedCount} prenha${completedCount !== 1 ? 's' : ''}` : null,
+          ].filter(Boolean).join(' · ') || `${proto.totalAnimals} animais`
+
+          return (
+            <Link
+              key={proto.id}
+              href={`/reproduction/protocolos/te?id=${proto.id}`}
+              className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 hover:bg-muted/30 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <FlaskConical className="size-5 text-violet-500 shrink-0" />
+                <div>
+                  <div className="text-sm font-medium">{proto.name}</div>
+                  <div className="text-xs text-muted-foreground">{subtitle}</div>
+                </div>
+              </div>
+              <span className="text-xs text-muted-foreground">→</span>
+            </Link>
+          )
+        })
+      ) : (
+        <Link
+          href="/reproduction/protocolos/te"
+          className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 hover:bg-muted/30 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <FlaskConical className="size-5 text-violet-500 shrink-0" />
+            <div>
+              <div className="text-sm font-medium">Protocolo TE</div>
+              <div className="text-xs text-muted-foreground">Nenhum protocolo ativo</div>
+            </div>
           </div>
-        </div>
-        <span className="text-xs text-muted-foreground">→</span>
-      </Link>
+          <span className="text-xs text-muted-foreground">→</span>
+        </Link>
+      )}
 
       {/* Ação rápida */}
       <ReproductionQuickRegister farmId={farmId} animals={animals} />
