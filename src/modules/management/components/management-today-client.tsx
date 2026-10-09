@@ -8,13 +8,14 @@ import { cn }        from '@/lib/utils'
 import {
   AlertTriangle, Baby, Droplets, CheckCircle2, ChevronRight,
   Camera, Bell, Heart, Stethoscope, Layers2,
-  Edit2, Scissors,
+  Edit2, Scissors, Syringe,
 } from 'lucide-react'
 import type { ManagementActionItem, ManagementOverview } from '../types'
 import { DryOffSheet }             from './dry-off-sheet'
 import { ManagementCalvingSheet }  from './management-calving-sheet'
 import { ManagementLotSheet }      from './management-lot-sheet'
 import { ManagementWeaningSheet }  from './management-weaning-sheet'
+import { ManagementVaccineSheet }  from './management-vaccine-sheet'
 
 // ─── Tipo do sheet ativo ──────────────────────────────────
 
@@ -23,11 +24,12 @@ type ActiveSheet =
   | { type: 'CALVING';  item: ManagementActionItem }
   | { type: 'LOT';      item: ManagementActionItem }
   | { type: 'WEANING';  item: ManagementActionItem }
+  | { type: 'VACCINE';  item: ManagementActionItem }
   | null
 
 // ─── Mapa de botões por tipo de ação ─────────────────────
 
-type SheetTriggerType = 'DRY_OFF' | 'CALVING' | 'LOT' | 'WEANING'
+type SheetTriggerType = 'DRY_OFF' | 'CALVING' | 'LOT' | 'WEANING' | 'VACCINE'
 
 const ACTION_BUTTON: Partial<Record<string, {
   label:      string
@@ -108,6 +110,9 @@ function ActionCard({
   // INCOMPLETE_CALF → link direto para edição
   const isIncompleteEdit = it.type === 'INCOMPLETE_CALF'
 
+  // Alerta de vacina pré-parto → botão "Aplicar"
+  const isVaccineAlert = it.type === 'PENDING_ALERT' && it.title.startsWith('Vacinas pré-parto')
+
   return (
     <div className="flex items-center gap-2 py-3 first:pt-0 last:pb-0">
       {/* Link principal ocupa o máximo, clica e vai para o animal */}
@@ -164,6 +169,18 @@ function ActionCard({
           <Edit2 className="size-3" />
           Editar
         </Link>
+      )}
+
+      {/* Vacina pré-parto → abre sheet de registro */}
+      {isVaccineAlert && (
+        <button
+          type="button"
+          onClick={() => onSheet({ type: 'VACCINE', item: it })}
+          className="shrink-0 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/25 transition-colors"
+        >
+          <Syringe className="size-3" />
+          Aplicar
+        </button>
       )}
     </div>
   )
@@ -251,7 +268,7 @@ function SummaryCard({
 
 // ─── Componente principal ─────────────────────────────────
 
-export function ManagementTodayClient({ overview }: { overview: ManagementOverview }) {
+export function ManagementTodayClient({ overview, farmId }: { overview: ManagementOverview; farmId: string }) {
   const { summary, sections } = overview
   const [activeSheet, setActiveSheet] = useState<ActiveSheet>(null)
 
@@ -358,6 +375,16 @@ export function ManagementTodayClient({ overview }: { overview: ManagementOvervi
         animalId={activeSheet?.type === 'LOT'   ? activeSheet.item.animalId   : ''}
         animalTag={activeSheet?.type === 'LOT'  ? activeSheet.item.animalTag  : ''}
         animalName={activeSheet?.type === 'LOT' ? activeSheet.item.animalName : null}
+      />
+      <ManagementVaccineSheet
+        open={activeSheet?.type === 'VACCINE'}
+        onClose={() => setActiveSheet(null)}
+        alertId={activeSheet?.type === 'VACCINE'      ? activeSheet.item.id         : ''}
+        animalId={activeSheet?.type === 'VACCINE'     ? activeSheet.item.animalId   : ''}
+        animalTag={activeSheet?.type === 'VACCINE'    ? activeSheet.item.animalTag  : ''}
+        animalName={activeSheet?.type === 'VACCINE'   ? activeSheet.item.animalName : null}
+        vaccineTitle={activeSheet?.type === 'VACCINE' ? activeSheet.item.title      : ''}
+        farmId={farmId}
       />
     </>
   )

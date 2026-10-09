@@ -28,7 +28,7 @@ export default async function ManagementTodayPage() {
         title="Manejo de Hoje"
         description={dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1)}
       />
-      <ManagementTodayClient overview={overview} />
+      <ManagementTodayClient overview={overview} farmId={farmId} />
     </div>
   )
 }

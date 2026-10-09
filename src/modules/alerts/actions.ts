@@ -48,6 +48,63 @@ export async function resolveAlert(
   }
 }
 
+// ─── Registrar vacina pré-parto e resolver alerta ─────────
+
+export async function applyVaccineAndResolveAlert(
+  alertId:  string,
+  animalId: string,
+  farmId:   string,
+  appliedAt: Date,
+): Promise<ActionResult<void>> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado' }
+
+    await requireFarmAccess(session.user.id, farmId, 'WORKER')
+
+    const [alert, animal] = await Promise.all([
+      prisma.alert.findFirst({ where: { id: alertId, farmId, status: 'PENDING' } }),
+      prisma.animal.findFirst({ where: { id: animalId, farmId } }),
+    ])
+    if (!alert)  return { success: false, error: 'Alerta não encontrado.' }
+    if (!animal) return { success: false, error: 'Animal não encontrado.' }
+
+    await prisma.$transaction([
+      prisma.healthEvent.create({
+        data: {
+          animalId,
+          type:        'VACCINATION',
+          description: `${alert.title} — Rotavec J5 + Tifopasteurina / Providean Enteroplus`,
+          occurredAt:  appliedAt,
+          resolved:    true,
+        },
+      }),
+      prisma.alert.update({
+        where: { id: alertId },
+        data:  { status: 'RESOLVED', resolvedAt: new Date() },
+      }),
+    ])
+
+    auditUpdate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Alert',
+      entityId: alertId,
+      before:   { status: 'PENDING' },
+      after:    { status: 'RESOLVED' },
+      metadata: { source: 'web', action: 'applyVaccine', animalId },
+    })
+
+    revalidatePath('/alerts')
+    revalidatePath('/management/today')
+    revalidatePath('/')
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[applyVaccineAndResolveAlert]', error)
+    return { success: false, error: 'Erro ao registrar vacina.' }
+  }
+}
+
 // ─── Ignorar alerta ───────────────────────────────────────
 
 export async function dismissAlert(
