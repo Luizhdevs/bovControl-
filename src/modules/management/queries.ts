@@ -419,8 +419,8 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
   registration.sort(byDays)
   health.sort(byDays)
 
-  // 6. Seção alertas
-  const alerts: ManagementActionItem[] = pendingAlerts.map((al) => ({
+  // 6. Seção alertas — separar vacinas dos demais alertas
+  const toItem = (al: typeof pendingAlerts[number]): ManagementActionItem => ({
     id:           al.id,
     animalId:     al.animal?.id ?? '',
     animalTag:    al.animal?.tag ?? '—',
@@ -435,10 +435,19 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
     reason:       al.description ?? al.title,
     priority:     al.priority as ManagementPriority,
     type:         'PENDING_ALERT' as const,
-    days:         null,
+    days:         al.dueDate ? Math.ceil((al.dueDate.getTime() - Date.now()) / 86_400_000) : null,
     dueDate:      al.dueDate ?? null,
     href:         al.animal ? `/animals/${al.animal.id}` : '/alerts',
-  }))
+  })
+
+  const vaccines = pendingAlerts
+    .filter((al) => al.title.startsWith('Vacinas pré-parto'))
+    .map(toItem)
+    .sort((a, b) => (a.days ?? Infinity) - (b.days ?? Infinity))
+
+  const alerts = pendingAlerts
+    .filter((al) => !al.title.startsWith('Vacinas pré-parto'))
+    .map(toItem)
 
   // 7. Resumo
   weaning.sort((a, b) => (b.days ?? 0) - (a.days ?? 0))  // mais velhos primeiro
@@ -448,6 +457,7 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
     ...calving.map((i) => i.id),
     ...dryOff.map((i) => i.id),
     ...reproduction.map((i) => i.id),
+    ...vaccines.map((i) => i.id),
     ...calves.map((i) => i.id),
     ...registration.map((i) => i.id),
     ...health.map((i) => i.id),
@@ -455,7 +465,7 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
     ...weaning.map((i) => i.id),
   ])
 
-  const allItems = [...critical, ...calving, ...dryOff, ...reproduction, ...calves, ...registration, ...health, ...alerts, ...weaning]
+  const allItems = [...critical, ...calving, ...dryOff, ...reproduction, ...vaccines, ...calves, ...registration, ...health, ...alerts, ...weaning]
 
   const summary: ManagementSummary = {
     totalActions:        allUnique.size,
@@ -471,12 +481,13 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
     animalsWithoutLot:   registration.filter((i) => i.type === 'MISSING_LOT').length,
     animalsWithoutPhoto: registration.filter((i) => i.type === 'MISSING_PHOTO').length,
     pendingAlerts:       alerts.length,
+    pendingVaccines:     vaccines.length,
     weaningDue:          weaning.filter((i) => i.priority === 'HIGH').length,
   }
 
   // 8. Seções
   const sections: ManagementSections = {
-    critical, calving, dryOff, reproduction, calves, registration, health, alerts, weaning,
+    critical, calving, dryOff, reproduction, vaccines, calves, registration, health, alerts, weaning,
   }
 
   return { summary, sections }

@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { auth } from '@/lib/auth'
 import { getActiveFarm } from '@/lib/active-farm'
-import { History, FlaskConical } from 'lucide-react'
+import { History, FlaskConical, Syringe } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/page-header'
 import { SectionCard } from '@/components/shared/section-card'
@@ -13,6 +13,7 @@ import {
   getReproductionStats,
   getPregnantAnimals,
 } from '@/modules/reproduction/queries'
+import { prisma } from '@/lib/prisma'
 import { ReproductionQuickRegister } from '@/modules/reproduction/components/reproduction-quick-register'
 import { ExpectedCalvingCard } from '@/modules/reproduction/components/expected-calving-card'
 
@@ -23,14 +24,31 @@ export const metadata = { title: 'Reprodução | BovControl' }
 // ─── Conteúdo assíncrono ────────────────────────────────────
 
 async function ReproductionDashboardContent({ farmId }: { farmId: string }) {
-  const [animals, stats, pregnantAnimals] = await Promise.all([
+  const [animals, stats, pregnantAnimals, vaccineAlerts] = await Promise.all([
     getAnimalsForReproduction(farmId),
     getReproductionStats(farmId),
     getPregnantAnimals(farmId),
+    prisma.alert.findMany({
+      where: {
+        farmId,
+        type: 'VACCINATION',
+        status: 'PENDING',
+        title: { startsWith: 'Vacinas pré-parto' },
+      },
+      select: {
+        id: true,
+        title: true,
+        dueDate: true,
+        priority: true,
+        animal: { select: { id: true, tag: true, name: true } },
+      },
+      orderBy: [{ dueDate: 'asc' }],
+    }),
   ])
 
   // Próximos partos (30 dias)
   const upcomingCalvings = pregnantAnimals.filter((a) => a.daysUntilCalving <= 30)
+  const today = new Date()
 
   return (
     <div className="space-y-4">
@@ -53,6 +71,67 @@ async function ReproductionDashboardContent({ farmId }: { farmId: string }) {
           </div>
         </div>
       </div>
+
+      {/* Vacinas pré-parto */}
+      {vaccineAlerts.length > 0 && (
+        <SectionCard
+          title="Vacinas Pré-Parto Pendentes"
+          subtitle={`${vaccineAlerts.length} aplicação${vaccineAlerts.length !== 1 ? 'ões' : ''} pendente${vaccineAlerts.length !== 1 ? 's' : ''}`}
+          noPadding
+        >
+          <div className="px-4 divide-y divide-border/40">
+            {vaccineAlerts.map((al) => {
+              const daysUntil = al.dueDate
+                ? Math.ceil((al.dueDate.getTime() - today.getTime()) / 86_400_000)
+                : null
+              const isOverdue = daysUntil !== null && daysUntil < 0
+              const isUrgent  = daysUntil !== null && daysUntil <= 7
+
+              return (
+                <Link
+                  key={al.id}
+                  href="/management/today"
+                  className="flex items-center justify-between py-3 hover:bg-muted/30 -mx-4 px-4 transition-colors min-h-[52px] gap-3"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="size-8 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
+                      <Syringe className="size-4 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono text-sm font-bold text-primary">
+                          {al.animal?.tag ?? '—'}
+                        </span>
+                        {al.animal?.name && (
+                          <span className="text-xs text-muted-foreground truncate">{al.animal.name}</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{al.title}</p>
+                    </div>
+                  </div>
+                  <span className={`text-xs font-medium shrink-0 tabular-nums ${
+                    isOverdue ? 'text-red-500' : isUrgent ? 'text-amber-500' : 'text-muted-foreground'
+                  }`}>
+                    {daysUntil === null
+                      ? '—'
+                      : isOverdue
+                        ? `${Math.abs(daysUntil)}d atrasado`
+                        : daysUntil === 0
+                          ? 'hoje'
+                          : `em ${daysUntil}d`}
+                  </span>
+                </Link>
+              )
+            })}
+          </div>
+          <div className="px-4 py-3 border-t border-border/40">
+            <Link href="/management/today" className="text-xs text-primary hover:underline flex items-center gap-1">
+              <Syringe className="size-3" />
+              Registrar aplicação no Manejo de Hoje
+            </Link>
+          </div>
+        </SectionCard>
+      )}
 
       {/* Protocolo TE */}
       <Link

@@ -284,8 +284,8 @@ export function ManagementTodayClient({ overview, farmId }: { overview: Manageme
           <SummaryCard label="Alta prioridade"      value={summary.highPriority}     color="text-red-500" />
           <SummaryCard label="Partos próximos"      value={summary.closeToCalving}   color="text-violet-500" />
           <SummaryCard label="A secar"              value={summary.dueToDryOff}      color="text-amber-500" />
+          <SummaryCard label="Vacinas pré-parto"    value={summary.pendingVaccines}  color="text-emerald-600" />
           <SummaryCard label="Desmama prontos"      value={summary.weaningDue}       color="text-green-600" />
-          <SummaryCard label="Alertas pendentes"    value={summary.pendingAlerts}    color="text-orange-500" href="/alerts" />
         </div>
 
         {summary.totalActions === 0 && (
@@ -304,6 +304,11 @@ export function ManagementTodayClient({ overview, farmId }: { overview: Manageme
         <Section title="Partos e Amojadas" icon={Baby} iconColor="bg-violet-500"
           items={sections.calving} emptyMessage="Nenhuma vaca com parto próximo." onSheet={setActiveSheet} />
 
+        {sections.vaccines.length > 0 && (
+          <Section title="Vacinas Pré-Parto" icon={Syringe} iconColor="bg-emerald-600"
+            items={sections.vaccines} emptyMessage="Nenhuma vacina pendente." onSheet={setActiveSheet} />
+        )}
+
         <Section title="Vacas a Secar" icon={Droplets} iconColor="bg-amber-500"
           items={sections.dryOff} emptyMessage="Nenhuma vaca para secar." onSheet={setActiveSheet} />
 
@@ -321,26 +326,20 @@ export function ManagementTodayClient({ overview, farmId }: { overview: Manageme
             limit={50} moreHref="/animals?category=CALF" onSheet={setActiveSheet} />
         )}
 
-        <Section title="Bezerros e Cadastros Incompletos" icon={Baby} iconColor="bg-green-600"
-          items={sections.calves} emptyMessage="Cadastros completos."
-          limit={30} moreHref="/animals?category=CALF" onSheet={setActiveSheet} />
+        {sections.calves.length > 0 && (
+          <Section title="Bezerros Incompletos" icon={Baby} iconColor="bg-sky-600"
+            items={sections.calves} emptyMessage="Cadastros completos."
+            limit={30} moreHref="/animals?category=CALF" onSheet={setActiveSheet} />
+        )}
 
         {sections.registration.length > 0 && (
           <Section title="Cadastro Incompleto" icon={Layers2} iconColor="bg-zinc-500"
             items={sections.registration} emptyMessage="Todos com foto e lote." limit={15} onSheet={setActiveSheet} />
         )}
 
-        <Section title="Alertas Pendentes" icon={Bell} iconColor="bg-orange-500"
-          items={sections.alerts} emptyMessage="Nenhum alerta." onSheet={setActiveSheet} />
-
-        {summary.pendingAlerts > 0 && (
-          <div className="text-center">
-            <Link href="/alerts" className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
-              <Bell className="size-3.5" />
-              Ver todos os alertas
-              <ChevronRight className="size-3.5" />
-            </Link>
-          </div>
+        {sections.alerts.length > 0 && (
+          <Section title="Outros Alertas" icon={Bell} iconColor="bg-orange-500"
+            items={sections.alerts} emptyMessage="Nenhum alerta." moreHref="/alerts" onSheet={setActiveSheet} />
         )}
       </div>
 

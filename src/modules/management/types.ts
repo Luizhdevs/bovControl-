@@ -59,6 +59,7 @@ export interface ManagementSummary {
   animalsWithoutLot:   number
   animalsWithoutPhoto: number
   pendingAlerts:       number
+  pendingVaccines:     number
   weaningDue:          number
 }
 
@@ -67,6 +68,7 @@ export interface ManagementSections {
   calving:      ManagementActionItem[]
   dryOff:       ManagementActionItem[]
   reproduction: ManagementActionItem[]
+  vaccines:     ManagementActionItem[]
   calves:       ManagementActionItem[]
   registration: ManagementActionItem[]
   health:       ManagementActionItem[]
