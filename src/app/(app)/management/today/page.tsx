@@ -16,10 +16,8 @@ export default async function ManagementTodayPage() {
   if (!activeFarm) redirect('/onboarding')
 
   const { farmId } = activeFarm
-  const [overview] = await Promise.all([
-    getTodayManagementOverview(farmId),
-    syncPreCalvingVaccineAlerts(farmId),
-  ])
+  await syncPreCalvingVaccineAlerts(farmId)
+  const overview = await getTodayManagementOverview(farmId)
 
   const today = new Date()
   const dateLabel = today.toLocaleDateString('pt-BR', {
