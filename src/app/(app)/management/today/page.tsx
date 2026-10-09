@@ -2,8 +2,9 @@ import { auth }          from '@/lib/auth'
 import { redirect }      from 'next/navigation'
 import { getActiveFarm } from '@/lib/active-farm'
 import { PageHeader }    from '@/components/shared/page-header'
-import { getTodayManagementOverview } from '@/modules/management/queries'
-import { ManagementTodayClient }      from '@/modules/management/components/management-today-client'
+import { getTodayManagementOverview }    from '@/modules/management/queries'
+import { syncPreCalvingVaccineAlerts }   from '@/modules/alerts/queries'
+import { ManagementTodayClient }         from '@/modules/management/components/management-today-client'
 
 export const metadata = { title: 'Manejo de Hoje | BovControl' }
 
@@ -15,7 +16,10 @@ export default async function ManagementTodayPage() {
   if (!activeFarm) redirect('/onboarding')
 
   const { farmId } = activeFarm
-  const overview   = await getTodayManagementOverview(farmId)
+  const [overview] = await Promise.all([
+    getTodayManagementOverview(farmId),
+    syncPreCalvingVaccineAlerts(farmId),
+  ])
 
   const today = new Date()
   const dateLabel = today.toLocaleDateString('pt-BR', {
