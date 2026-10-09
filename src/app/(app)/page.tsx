@@ -319,6 +319,33 @@ export default async function DashboardPage() {
             </span>
           )}
         </div>
+
+        {/* Machos / Fêmeas */}
+        {stats.total > 0 && (
+          <div className="mb-4">
+            <div className="flex rounded-full overflow-hidden h-3 mb-2">
+              <div
+                className="bg-pink-500 transition-all"
+                style={{ width: `${(stats.females / stats.total) * 100}%` }}
+              />
+              <div
+                className="bg-sky-500 transition-all"
+                style={{ width: `${(stats.males / stats.total) * 100}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <span className="inline-block size-2 rounded-full bg-pink-500" />
+                <span className="font-medium text-foreground">{stats.females}</span> fêmeas
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="font-medium text-foreground">{stats.males}</span> machos
+                <span className="inline-block size-2 rounded-full bg-sky-500" />
+              </span>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-2">
           {[
             { label: 'Vacas',    value: stats.cows,    color: 'bg-purple-500' },

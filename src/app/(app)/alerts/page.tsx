@@ -1,7 +1,7 @@
 import { auth }         from '@/lib/auth'
 import { redirect }     from 'next/navigation'
 import { getActiveFarm } from '@/lib/active-farm'
-import { getAlerts }    from '@/modules/alerts/queries'
+import { getAlerts, syncPreCalvingVaccineAlerts } from '@/modules/alerts/queries'
 import { AlertCard } from '@/modules/alerts/components/alert-card'
 import { PageHeader } from '@/components/shared/page-header'
 import { Bell }        from 'lucide-react'
@@ -33,6 +33,9 @@ export default async function AlertsPage({ searchParams }: AlertsPageProps) {
 
   const activeFarm = await getActiveFarm(session.user.id)
   if (!activeFarm) redirect('/onboarding')
+
+  // Sincroniza alertas de vacina pré-parto antes de carregar a lista
+  await syncPreCalvingVaccineAlerts(activeFarm.farmId)
 
   const alerts = await getAlerts(activeFarm.farmId, { status })
 

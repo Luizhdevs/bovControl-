@@ -73,6 +73,8 @@ export type AnimalStats = {
   calves:  number
   bulls:   number
   steers:  number
+  males:   number
+  females: number
 }
 
 // ─── Resultado paginado da listagem ──────────────────────

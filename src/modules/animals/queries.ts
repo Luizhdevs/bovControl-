@@ -278,16 +278,22 @@ export async function getLotsForSelect(farmId: string): Promise<LotSelectOption[
 // ─── Estatísticas ──────────────────────────────────────────
 
 export async function getAnimalStats(farmId: string): Promise<AnimalStats> {
-  const byCategory = await prisma.animal.groupBy({
-    by:    ['category'],
-    where: { farmId, status: 'ACTIVE' },
-    _count: { id: true },
-  })
+  const [byCategory, bySex] = await Promise.all([
+    prisma.animal.groupBy({
+      by:    ['category'],
+      where: { farmId, status: 'ACTIVE' },
+      _count: { id: true },
+    }),
+    prisma.animal.groupBy({
+      by:    ['sex'],
+      where: { farmId, status: 'ACTIVE' },
+      _count: { id: true },
+    }),
+  ])
 
-  const countOf = (cat: string) =>
-    byCategory.find((b) => b.category === cat)?._count.id ?? 0
-
-  const total = byCategory.reduce((sum, b) => sum + b._count.id, 0)
+  const countOf    = (cat: string) => byCategory.find((b) => b.category === cat)?._count.id ?? 0
+  const countBySex = (sex: string) => bySex.find((b) => b.sex === sex)?._count.id ?? 0
+  const total      = byCategory.reduce((sum, b) => sum + b._count.id, 0)
 
   return {
     total,
@@ -296,6 +302,8 @@ export async function getAnimalStats(farmId: string): Promise<AnimalStats> {
     calves:  countOf('CALF'),
     bulls:   countOf('BULL'),
     steers:  countOf('STEER'),
+    females: countBySex('FEMALE'),
+    males:   countBySex('MALE'),
   }
 }
 
