@@ -913,12 +913,13 @@ export async function registerCalving(
         select: { id: true, tag: true },
       })
 
-      // Atualiza mãe: data do último parto + contador de partos
+      // Atualiza mãe: data do último parto + contador de partos + status lactante
       await tx.animal.update({
         where: { id: animalId },
         data:  {
           lastCalvingDate: birthDate,
           parityNumber:    (mother.parityNumber ?? 0) + 1,
+          milkStatus:      'LACTATING',
         },
       })
 

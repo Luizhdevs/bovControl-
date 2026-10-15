@@ -40,6 +40,26 @@ export const updateHealthEventSchema = createHealthEventSchema
 
 export type UpdateHealthEventInput = z.infer<typeof updateHealthEventSchema>
 
+// ─── Vacinação em massa ───────────────────────────────────
+
+export const bulkVaccinationSchema = z.object({
+  description: z.string().min(2, 'Informe a vacina').max(200, 'Máximo 200 caracteres'),
+  medication:  z.string().max(200).optional().or(z.literal('')),
+  cost: z.preprocess(
+    (v) => {
+      if (v === undefined || v === null || v === '') return undefined
+      if (typeof v === 'number') return v
+      const n = parseFloat(String(v).replace(',', '.'))
+      return isNaN(n) ? undefined : n
+    },
+    z.number().nonnegative('Custo não pode ser negativo').optional(),
+  ),
+  occurredAt: z.coerce.date().default(() => new Date()),
+  notes:      z.string().max(2000).optional().or(z.literal('')),
+})
+
+export type BulkVaccinationInput = z.infer<typeof bulkVaccinationSchema>
+
 // ─── Filtros de listagem ───────────────────────────────────
 
 export const healthEventFiltersSchema = z.object({

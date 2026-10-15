@@ -4,7 +4,7 @@ import { revalidatePath }    from 'next/cache'
 import { prisma }            from '@/lib/prisma'
 import { auth }              from '@/lib/auth'
 import { requireFarmAccess } from '@/lib/permissions'
-import { Prisma }            from '@prisma/client'
+import { Prisma, MilkStatus } from '@prisma/client'
 
 // Regras de domínio compartilhadas — NENHUMA regra de negócio definida aqui
 import {
@@ -234,39 +234,57 @@ export async function bulkMoveAnimalsToLot(
       select: { id: true, sex: true, category: true, status: true, birthType: true, lotId: true, milkStatus: true },
     })
 
-    let moved   = 0
-    let skipped = 0
+    const allowedAnimals = animals.filter((a) => canMoveToLot(a).allowed)
+    const moved   = allowedAnimals.length
+    const skipped = animals.length - moved
 
-    for (const animal of animals) {
-      const moveGuard = canMoveToLot(animal)
-      if (!moveGuard.allowed) { skipped++; continue }
+    if (moved > 0) {
+      // Determina novo milkStatus (igual para todos os animais do lote destino)
+      const autoMilk = farmSettings?.autoUpdateMilkStatus ?? true
+      const newMilkStatus: MilkStatus | undefined =
+        !autoMilk                                                        ? undefined
+        : targetLot.type === 'LACTATING'                                 ? MilkStatus.LACTATING
+        : targetLot.type === 'DRY' || targetLot.type === 'MATERNITY'     ? MilkStatus.DRY
+        : targetLot.type === 'HEIFER'                                    ? MilkStatus.HEIFER
+        : undefined
 
-      let newCategory = animal.category
-      if (shouldUpgradeToCowByLot(animal, targetLot)) newCategory = 'COW'
+      const milkData = newMilkStatus ? { milkStatus: newMilkStatus } : {}
 
-      let newMilkStatus = animal.milkStatus
-      if (farmSettings?.autoUpdateMilkStatus ?? true) {
-        if (targetLot.type === 'LACTATING')                               newMilkStatus = 'LACTATING'
-        else if (targetLot.type === 'DRY' || targetLot.type === 'MATERNITY') newMilkStatus = 'DRY'
-        else if (targetLot.type === 'HEIFER')                             newMilkStatus = 'HEIFER'
+      // Agrupa por necessidade de upgrade de categoria
+      const upgradeToCowIds = allowedAnimals
+        .filter((a) => shouldUpgradeToCowByLot(a, targetLot))
+        .map((a) => a.id)
+      const keepCategoryIds = allowedAnimals
+        .filter((a) => !shouldUpgradeToCowByLot(a, targetLot))
+        .map((a) => a.id)
+
+      await prisma.$transaction(async (tx) => {
+        if (upgradeToCowIds.length > 0) {
+          await tx.animal.updateMany({
+            where: { id: { in: upgradeToCowIds } },
+            data:  { lotId: targetLotId, category: 'COW', ...milkData },
+          })
+        }
+        if (keepCategoryIds.length > 0) {
+          await tx.animal.updateMany({
+            where: { id: { in: keepCategoryIds } },
+            data:  { lotId: targetLotId, ...milkData },
+          })
+        }
+      })
+
+      // Audit por animal (fire-and-forget, fora da transaction)
+      for (const animal of allowedAnimals) {
+        auditUpdate({
+          farmId,
+          userId:   session.user.id,
+          entity:   'Animal',
+          entityId: animal.id,
+          before:   { lotId: animal.lotId },
+          after:    { lotId: targetLotId },
+          metadata: { previousLotId: animal.lotId, targetLotId, reason: 'bulk_transfer' },
+        })
       }
-
-      await prisma.animal.update({
-        where: { id: animal.id },
-        data:  { lotId: targetLotId, category: newCategory, milkStatus: newMilkStatus },
-      })
-
-      auditUpdate({
-        farmId,
-        userId:   session.user.id,
-        entity:   'Animal',
-        entityId: animal.id,
-        before:   { lotId: animal.lotId },
-        after:    { lotId: targetLotId },
-        metadata: { previousLotId: animal.lotId, targetLotId, reason: 'bulk_transfer' },
-      })
-
-      moved++
     }
 
     revalidatePath('/lots')

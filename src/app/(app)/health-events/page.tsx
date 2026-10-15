@@ -8,7 +8,7 @@ import { HealthEventCard }        from '@/modules/health-events/components/healt
 import { PageHeader }             from '@/components/shared/page-header'
 import { HEALTH_EVENT_LABELS }    from '@/modules/health-events/types'
 import Link                       from 'next/link'
-import { Plus, Activity }         from 'lucide-react'
+import { Plus, Activity, Syringe } from 'lucide-react'
 import type { HealthEventType }   from '@prisma/client'
 
 export const metadata = { title: 'Saúde | BovControl' }
@@ -109,13 +109,22 @@ export default async function HealthEventsPage({ searchParams }: Props) {
         title="Saúde Animal"
         description={`${total} evento${total !== 1 ? 's' : ''}`}
         actions={canManage ? (
-          <Link
-            href="/health-events/new"
-            className="flex items-center gap-1.5 rounded-lg border border-primary/40 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/5 transition-colors"
-          >
-            <Plus className="size-4" />
-            Registrar
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/health-events/vaccination"
+              className="flex items-center gap-1.5 rounded-lg border border-emerald-500/40 px-3 py-2 text-sm font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/5 transition-colors"
+            >
+              <Syringe className="size-4" />
+              Em massa
+            </Link>
+            <Link
+              href="/health-events/new"
+              className="flex items-center gap-1.5 rounded-lg border border-primary/40 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/5 transition-colors"
+            >
+              <Plus className="size-4" />
+              Registrar
+            </Link>
+          </div>
         ) : undefined}
       />
 

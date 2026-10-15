@@ -3,6 +3,7 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 import QRCode from 'qrcode'
 import { auth } from '@/lib/auth'
 import { getActiveFarm } from '@/lib/active-farm'
+import { requireFarmAccess } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
 import type { LayoutJson } from '@/modules/ear-tags/types'
 
@@ -31,6 +32,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Fazenda não encontrada' }, { status: 404 })
     }
     const { farmId } = activeFarm
+
+    await requireFarmAccess(session.user.id, farmId, 'WORKER')
 
     // ── Parâmetros ──────────────────────────────────────────
     const { searchParams } = req.nextUrl

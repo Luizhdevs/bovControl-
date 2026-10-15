@@ -176,6 +176,16 @@ export async function registerMilkingSessionWithParticipants(
 
     await requireFarmAccess(session.user.id, farmId, 'WORKER')
 
+    // Valida que os animais participantes pertencem à fazenda (IDOR)
+    if (participantAnimalIds && participantAnimalIds.length > 0) {
+      const validCount = await prisma.animal.count({
+        where: { id: { in: participantAnimalIds }, farmId, status: 'ACTIVE' },
+      })
+      if (validCount !== participantAnimalIds.length) {
+        return { success: false, error: 'Um ou mais animais inválidos', kind: 'domain' }
+      }
+    }
+
     // Idempotência: se a sessão já existe pelo key, retorna sem duplicar
     if (parsed.data.idempotencyKey) {
       const existingByKey = await prisma.milkingSession.findUnique({
@@ -328,24 +338,32 @@ export async function registerSessionParticipants(
       return { success: true, data: undefined }
     }
 
+    // Valida que os animais pertencem à fazenda (IDOR)
+    const validCount = await prisma.animal.count({
+      where: { id: { in: animalIds }, farmId, status: 'ACTIVE' },
+    })
+    if (validCount !== animalIds.length) {
+      return { success: false, error: 'Um ou mais animais inválidos', kind: 'domain' }
+    }
+
     const litersPerCow = totalLiters / animalIds.length
 
-    await prisma.$transaction(
-      animalIds.map((animalId) =>
-        prisma.milkingSessionParticipant.upsert({
+    await prisma.$transaction(async (tx) => {
+      // Remove participantes desmarcados atomicamente com os upserts
+      await tx.milkingSessionParticipant.deleteMany({
+        where: {
+          sessionId,
+          animalId: { notIn: animalIds },
+        },
+      })
+
+      for (const animalId of animalIds) {
+        await tx.milkingSessionParticipant.upsert({
           where:  { sessionId_animalId: { sessionId, animalId } },
           create: { sessionId, animalId, liters: litersPerCow, isEstimated: true },
           update: { liters: litersPerCow, isEstimated: true },
-        }),
-      ),
-    )
-
-    // Remove participantes desmarcados (que estavam antes mas não estão na lista atual)
-    await prisma.milkingSessionParticipant.deleteMany({
-      where: {
-        sessionId,
-        animalId: { notIn: animalIds },
-      },
+        })
+      }
     })
 
     auditLog({

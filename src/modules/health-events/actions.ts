@@ -8,6 +8,7 @@ import { auditLog, auditUpdate } from '@/lib/audit'
 import {
   createHealthEventSchema,
   updateHealthEventSchema,
+  bulkVaccinationSchema,
 } from './schema'
 import type { ActionResult } from './types'
 
@@ -173,6 +174,83 @@ export async function resolveHealthEvent(
   } catch (error) {
     console.error('[resolveHealthEvent]', error)
     return { success: false, error: 'Erro ao resolver evento.' }
+  }
+}
+
+// ─── Vacinação em massa ────────────────────────────────────
+
+export async function createBulkVaccination(
+  farmId:    string,
+  animalIds: string[],
+  rawData:   unknown,
+): Promise<ActionResult<{ count: number }>> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado' }
+
+    await requireFarmAccess(session.user.id, farmId, 'WORKER')
+
+    if (!animalIds || animalIds.length === 0) {
+      return { success: false, error: 'Selecione pelo menos um animal' }
+    }
+
+    const parsed = bulkVaccinationSchema.safeParse(rawData)
+    if (!parsed.success) {
+      return { success: false, error: parsed.error.errors[0]!.message }
+    }
+
+    // Valida que todos os animais pertencem à fazenda (IDOR)
+    const validAnimals = await prisma.animal.findMany({
+      where:  { id: { in: animalIds }, farmId, status: 'ACTIVE' },
+      select: { id: true },
+    })
+    if (validAnimals.length !== animalIds.length) {
+      return { success: false, error: 'Um ou mais animais inválidos' }
+    }
+
+    const validIds = validAnimals.map((a) => a.id)
+
+    const events = await prisma.$transaction(
+      validIds.map((animalId) =>
+        prisma.healthEvent.create({
+          data: {
+            animalId,
+            type:        'VACCINATION',
+            description: parsed.data.description,
+            medication:  parsed.data.medication || null,
+            cost:        parsed.data.cost       ?? null,
+            occurredAt:  parsed.data.occurredAt,
+            notes:       parsed.data.notes      || null,
+            resolved:    true,
+          },
+          select: { id: true, animalId: true },
+        }),
+      ),
+    )
+
+    auditLog({
+      farmId,
+      userId:   session.user.id,
+      action:   'CREATE',
+      entity:   'HealthEvent',
+      entityId: `bulk:${events.length}`,
+      after: {
+        type:        'VACCINATION',
+        description: parsed.data.description,
+        count:       events.length,
+        animalIds:   validIds,
+      },
+      metadata: { source: 'bulk_vaccination' },
+    })
+
+    revalidatePath('/health-events')
+    revalidatePath('/animals')
+    revalidatePath('/')
+
+    return { success: true, data: { count: events.length } }
+  } catch (error) {
+    console.error('[createBulkVaccination]', error)
+    return { success: false, error: 'Erro ao registrar vacinações. Tente novamente.' }
   }
 }
 
