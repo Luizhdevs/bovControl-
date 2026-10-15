@@ -2,20 +2,20 @@
 
 import { useState, useTransition, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, CheckSquare, Square, Syringe, CheckCircle2, ChevronDown } from 'lucide-react'
+import { Search, CheckSquare, Square, Syringe, CheckCircle2, Plus, X } from 'lucide-react'
 import { createBulkVaccination } from '@/modules/health-events/actions'
 
-// ─── Vacinas comuns pré-definidas ──────────────────────────
+// ─── Vacinas pré-definidas ─────────────────────────────────
 
 const VACCINE_PRESETS = [
-  { label: 'Raiva',              value: 'Raiva' },
-  { label: 'Mal de Ano',         value: 'Mal de Ano (Clostridiose)' },
-  { label: 'Febre Aftosa',       value: 'Febre Aftosa' },
-  { label: 'Brucelose',          value: 'Brucelose' },
-  { label: 'Botulismo',          value: 'Botulismo' },
-  { label: 'IBR / BVD',          value: 'IBR / BVD' },
-  { label: 'Carbúnculo Sintom.', value: 'Carbúnculo Sintomático' },
-  { label: 'Leptospirose',       value: 'Leptospirose' },
+  'Raiva',
+  'Mal de Ano (Clostridiose)',
+  'Febre Aftosa',
+  'Brucelose',
+  'Botulismo',
+  'IBR / BVD',
+  'Carbúnculo Sintomático',
+  'Leptospirose',
 ]
 
 // ─── Types ─────────────────────────────────────────────────
@@ -39,21 +39,32 @@ export function VaccinationBulkForm({ farmId, animals }: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
 
+  // Seleção de vacinas (múltiplas)
+  const [selectedVaccines, setSelectedVaccines] = useState<Set<string>>(new Set())
+  const [customVaccine, setCustomVaccine]       = useState('')
+  const [showCustom, setShowCustom]             = useState(false)
+
   // Seleção de animais
-  const [selected, setSelected]   = useState<Set<string>>(new Set())
-  const [search, setSearch]        = useState('')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [search, setSearch]     = useState('')
 
   // Campos do formulário
-  const [description, setDescription] = useState('')
-  const [customDesc, setCustomDesc]    = useState('')
-  const [medication, setMedication]    = useState('')
-  const [occurredAt, setOccurredAt]    = useState(() => new Date().toISOString().slice(0, 10))
-  const [cost, setCost]                = useState('')
-  const [notes, setNotes]              = useState('')
+  const [medication, setMedication] = useState('')
+  const [occurredAt, setOccurredAt] = useState(() => new Date().toISOString().slice(0, 10))
+  const [cost, setCost]             = useState('')
+  const [notes, setNotes]           = useState('')
 
-  // Estado de sucesso
-  const [done, setDone] = useState<{ count: number; vaccine: string } | null>(null)
+  // Feedback
+  const [done, setDone]   = useState<{ count: number; vaccines: string[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Vacinas finais (presets selecionados + custom se preenchido)
+  const allVaccines = useMemo(() => {
+    const list = Array.from(selectedVaccines)
+    const custom = customVaccine.trim()
+    if (custom && !list.includes(custom)) list.push(custom)
+    return list
+  }, [selectedVaccines, customVaccine])
 
   const filteredAnimals = useMemo(() => {
     if (!search) return animals
@@ -62,9 +73,18 @@ export function VaccinationBulkForm({ farmId, animals }: Props) {
       (a) =>
         a.tag.toLowerCase().includes(q) ||
         (a.name?.toLowerCase().includes(q) ?? false) ||
-        a.lot?.name.toLowerCase().includes(q),
+        (a.lot?.name.toLowerCase().includes(q) ?? false),
     )
   }, [animals, search])
+
+  function toggleVaccine(v: string) {
+    setSelectedVaccines((prev) => {
+      const next = new Set(prev)
+      if (next.has(v)) next.delete(v)
+      else next.add(v)
+      return next
+    })
+  }
 
   function toggleAnimal(id: string) {
     setSelected((prev) => {
@@ -75,38 +95,36 @@ export function VaccinationBulkForm({ farmId, animals }: Props) {
     })
   }
 
-  function toggleAll() {
-    if (selected.size === filteredAnimals.length) {
+  function toggleAllAnimals() {
+    if (selected.size === filteredAnimals.length && filteredAnimals.length > 0) {
       setSelected(new Set())
     } else {
       setSelected(new Set(filteredAnimals.map((a) => a.id)))
     }
   }
 
-  const finalDescription = description === '__custom__' ? customDesc : description
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
 
-    if (!finalDescription.trim()) { setError('Informe a vacina'); return }
-    if (selected.size === 0)      { setError('Selecione pelo menos um animal'); return }
+    if (allVaccines.length === 0) { setError('Selecione pelo menos uma vacina'); return }
+    if (selected.size === 0)      { setError('Selecione pelo menos um animal');  return }
 
     startTransition(async () => {
       const result = await createBulkVaccination(
         farmId,
         Array.from(selected),
         {
-          description: finalDescription.trim(),
-          medication:  medication.trim() || undefined,
-          occurredAt:  new Date(occurredAt + 'T12:00:00'),
-          cost:        cost ? parseFloat(cost.replace(',', '.')) : undefined,
-          notes:       notes.trim() || undefined,
+          descriptions: allVaccines,
+          medication:   medication.trim() || undefined,
+          occurredAt:   new Date(occurredAt + 'T12:00:00'),
+          cost:         cost ? parseFloat(cost.replace(',', '.')) : undefined,
+          notes:        notes.trim() || undefined,
         },
       )
 
       if (result.success) {
-        setDone({ count: result.data.count, vaccine: finalDescription.trim() })
+        setDone({ count: result.data.count, vaccines: allVaccines })
       } else {
         setError(result.error ?? 'Erro desconhecido')
       }
@@ -123,14 +141,13 @@ export function VaccinationBulkForm({ farmId, animals }: Props) {
         <div>
           <p className="text-lg font-semibold">Vacinação registrada!</p>
           <p className="text-sm text-muted-foreground mt-1">
-            <span className="font-medium text-foreground">{done.count} animal{done.count !== 1 ? 'is' : ''}</span>
-            {' '}vacinado{done.count !== 1 ? 's' : ''} contra{' '}
-            <span className="font-medium text-foreground">{done.vaccine}</span>
+            <span className="font-medium text-foreground">{done.count} registro{done.count !== 1 ? 's' : ''}</span>
+            {' '}criado{done.count !== 1 ? 's' : ''} — {done.vaccines.join(', ')}
           </p>
         </div>
         <div className="flex gap-3">
           <button
-            onClick={() => { setDone(null); setSelected(new Set()) }}
+            onClick={() => { setDone(null); setSelected(new Set()); setSelectedVaccines(new Set()); setCustomVaccine('') }}
             className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-muted/50 transition-colors"
           >
             Nova vacinação
@@ -146,51 +163,105 @@ export function VaccinationBulkForm({ farmId, animals }: Props) {
     )
   }
 
+  const totalRecords = selected.size * allVaccines.length
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
 
-      {/* ── Vacina ─────────────────────────────────────────── */}
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Vacina *</label>
+      {/* ── Vacinas (multi-seleção) ────────────────────────── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium">
+            Vacinas *
+            {allVaccines.length > 0 && (
+              <span className="ml-2 font-normal text-xs text-emerald-600 dark:text-emerald-400">
+                {allVaccines.length} selecionada{allVaccines.length !== 1 ? 's' : ''}
+              </span>
+            )}
+          </label>
+        </div>
+
         <div className="grid grid-cols-2 gap-2">
-          {VACCINE_PRESETS.map((p) => (
+          {VACCINE_PRESETS.map((v) => {
+            const active = selectedVaccines.has(v)
+            return (
+              <button
+                key={v}
+                type="button"
+                onClick={() => toggleVaccine(v)}
+                className={`
+                  relative rounded-lg border px-3 py-2.5 text-left text-sm transition-colors
+                  ${active
+                    ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-medium'
+                    : 'border-border hover:border-emerald-500/40 text-foreground'}
+                `}
+              >
+                {active && (
+                  <span className="absolute top-1.5 right-1.5 size-3.5 rounded-full bg-emerald-500 flex items-center justify-center">
+                    <span className="text-[8px] text-white font-bold">✓</span>
+                  </span>
+                )}
+                {v.replace(' (Clostridiose)', '')}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Campo personalizado */}
+        {showCustom ? (
+          <div className="flex gap-2">
+            <input
+              autoFocus
+              type="text"
+              value={customVaccine}
+              onChange={(e) => setCustomVaccine(e.target.value)}
+              placeholder="Nome da vacina personalizada"
+              className="flex-1 rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
             <button
-              key={p.value}
               type="button"
-              onClick={() => { setDescription(p.value); setCustomDesc('') }}
-              className={`
-                rounded-lg border px-3 py-2.5 text-left text-sm transition-colors
-                ${description === p.value
-                  ? 'border-primary bg-primary/10 text-primary font-medium'
-                  : 'border-border hover:border-primary/40 text-foreground'}
-              `}
+              onClick={() => { setShowCustom(false); setCustomVaccine('') }}
+              className="px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
             >
-              {p.label}
+              <X className="size-4" />
             </button>
-          ))}
+          </div>
+        ) : (
           <button
             type="button"
-            onClick={() => setDescription('__custom__')}
-            className={`
-              col-span-2 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors flex items-center gap-2
-              ${description === '__custom__'
-                ? 'border-primary bg-primary/10 text-primary font-medium'
-                : 'border-border hover:border-primary/40 text-muted-foreground'}
-            `}
+            onClick={() => setShowCustom(true)}
+            className="flex items-center gap-1.5 text-xs text-primary hover:underline"
           >
-            <ChevronDown className="size-4 shrink-0" />
-            Outra vacina...
+            <Plus className="size-3.5" />
+            Adicionar outra vacina
           </button>
-        </div>
-        {description === '__custom__' && (
-          <input
-            autoFocus
-            type="text"
-            value={customDesc}
-            onChange={(e) => setCustomDesc(e.target.value)}
-            placeholder="Nome da vacina"
-            className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
+        )}
+
+        {/* Resumo das selecionadas */}
+        {allVaccines.length > 0 && (
+          <div className="rounded-lg bg-muted/50 border border-border/60 px-3 py-2.5 space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">Vacinas selecionadas:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {allVaccines.map((v) => (
+                <span
+                  key={v}
+                  className="flex items-center gap-1 text-xs bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full"
+                >
+                  {v}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (VACCINE_PRESETS.includes(v)) toggleVaccine(v)
+                      else { setCustomVaccine(''); setShowCustom(false) }
+                    }}
+                    className="hover:text-destructive transition-colors"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
@@ -253,14 +324,14 @@ export function VaccinationBulkForm({ farmId, animals }: Props) {
         <div className="flex items-center justify-between">
           <label className="text-sm font-medium flex items-center gap-1.5">
             <Syringe className="size-4 text-emerald-500" />
-            Animais vacinados *
+            Animais *
             <span className="font-normal text-muted-foreground text-xs ml-1">
               {selected.size}/{animals.length}
             </span>
           </label>
           <button
             type="button"
-            onClick={toggleAll}
+            onClick={toggleAllAnimals}
             className="text-xs text-primary hover:underline"
           >
             {selected.size > 0 && selected.size === filteredAnimals.length
@@ -337,13 +408,18 @@ export function VaccinationBulkForm({ farmId, animals }: Props) {
             )
           })}
         </div>
-
-        {selected.size > 0 && (
-          <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-xs text-center text-emerald-600 dark:text-emerald-400">
-            {selected.size} animal{selected.size !== 1 ? 'is' : ''} selecionado{selected.size !== 1 ? 's' : ''}
-          </div>
-        )}
       </div>
+
+      {/* ── Preview do total ───────────────────────────────── */}
+      {totalRecords > 0 && (
+        <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300 text-center">
+          <span className="font-bold tabular-nums">{selected.size}</span> animal{selected.size !== 1 ? 'is' : ''}
+          {' '}×{' '}
+          <span className="font-bold tabular-nums">{allVaccines.length}</span> vacina{allVaccines.length !== 1 ? 's' : ''}
+          {' '}={' '}
+          <span className="font-bold tabular-nums">{totalRecords}</span> registro{totalRecords !== 1 ? 's' : ''}
+        </div>
+      )}
 
       {/* ── Erro ───────────────────────────────────────────── */}
       {error && (
@@ -353,15 +429,15 @@ export function VaccinationBulkForm({ farmId, animals }: Props) {
       {/* ── Submit ─────────────────────────────────────────── */}
       <button
         type="submit"
-        disabled={pending || selected.size === 0 || !finalDescription.trim()}
+        disabled={pending || allVaccines.length === 0 || selected.size === 0}
         className="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 text-white font-medium py-3 text-sm hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         <Syringe className="size-4" />
         {pending
           ? 'Registrando...'
-          : selected.size > 0
-            ? `Registrar vacinação — ${selected.size} animal${selected.size !== 1 ? 'is' : ''}`
-            : 'Selecione os animais'}
+          : totalRecords > 0
+            ? `Registrar ${totalRecords} vacinação${totalRecords !== 1 ? 'ões' : ''}`
+            : 'Selecione vacinas e animais'}
       </button>
     </form>
   )

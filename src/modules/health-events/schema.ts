@@ -43,8 +43,8 @@ export type UpdateHealthEventInput = z.infer<typeof updateHealthEventSchema>
 // ─── Vacinação em massa ───────────────────────────────────
 
 export const bulkVaccinationSchema = z.object({
-  description: z.string().min(2, 'Informe a vacina').max(200, 'Máximo 200 caracteres'),
-  medication:  z.string().max(200).optional().or(z.literal('')),
+  descriptions: z.array(z.string().min(2).max(200)).min(1, 'Selecione pelo menos uma vacina'),
+  medication:   z.string().max(200).optional().or(z.literal('')),
   cost: z.preprocess(
     (v) => {
       if (v === undefined || v === null || v === '') return undefined
@@ -59,6 +59,7 @@ export const bulkVaccinationSchema = z.object({
 })
 
 export type BulkVaccinationInput = z.infer<typeof bulkVaccinationSchema>
+// descriptions.length × animalIds.length = total HealthEvent records created
 
 // ─── Filtros de listagem ───────────────────────────────────
 

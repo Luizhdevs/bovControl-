@@ -210,18 +210,23 @@ export async function createBulkVaccination(
 
     const validIds = validAnimals.map((a) => a.id)
 
+    // N animais × M vacinas = N×M registros individuais
+    const pairs = validIds.flatMap((animalId) =>
+      parsed.data.descriptions.map((description) => ({ animalId, description })),
+    )
+
     const events = await prisma.$transaction(
-      validIds.map((animalId) =>
+      pairs.map(({ animalId, description }) =>
         prisma.healthEvent.create({
           data: {
             animalId,
-            type:        'VACCINATION',
-            description: parsed.data.description,
-            medication:  parsed.data.medication || null,
-            cost:        parsed.data.cost       ?? null,
-            occurredAt:  parsed.data.occurredAt,
-            notes:       parsed.data.notes      || null,
-            resolved:    true,
+            type:       'VACCINATION',
+            description,
+            medication: parsed.data.medication || null,
+            cost:       parsed.data.cost       ?? null,
+            occurredAt: parsed.data.occurredAt,
+            notes:      parsed.data.notes      || null,
+            resolved:   true,
           },
           select: { id: true, animalId: true },
         }),
@@ -235,10 +240,10 @@ export async function createBulkVaccination(
       entity:   'HealthEvent',
       entityId: `bulk:${events.length}`,
       after: {
-        type:        'VACCINATION',
-        description: parsed.data.description,
-        count:       events.length,
-        animalIds:   validIds,
+        type:         'VACCINATION',
+        descriptions: parsed.data.descriptions,
+        count:        events.length,
+        animalIds:    validIds,
       },
       metadata: { source: 'bulk_vaccination' },
     })
