@@ -355,30 +355,52 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
       }
 
       // ── Desmama ─────────────────────────────────────────
+      // Janela: 60–90 dias. Exibe aviso 5 dias antes (55+).
+      // 60-89 dias: desmama antecipada para bezerros destaque.
+      // 90+ dias: desmama normal — todos os aptos.
       if (a.birthDate) {
         const ageDays  = Math.floor((today.getTime() - new Date(a.birthDate).getTime()) / DAY_MS)
         const weightKg = calfWeightMap.get(a.id) ?? null
 
-        if (ageDays >= 85) {
-          const meetsAge    = ageDays >= 90
-          const meetsWeight = weightKg !== null && weightKg >= 100
-          const noWeight    = weightKg === null
+        if (ageDays >= 55) {
+          const meetsAge      = ageDays >= 60
+          const isEarlyWindow = ageDays >= 60 && ageDays < 90
+          const meetsWeight   = weightKg !== null && weightKg >= 100
+          const noWeight      = weightKg === null
 
-          const title = meetsAge && meetsWeight
-            ? 'Pronto para desmamar'
-            : meetsAge && noWeight
-            ? 'Verificar peso — possível desmama'
-            : meetsAge
-            ? `Peso insuficiente (${weightKg} kg)`
-            : `Desmama em ${90 - ageDays} dia${90 - ageDays !== 1 ? 's' : ''}`
+          let title: string
+          if (!meetsAge) {
+            const rem = 60 - ageDays
+            title = `Desmama em ${rem} dia${rem !== 1 ? 's' : ''}`
+          } else if (isEarlyWindow) {
+            title = meetsWeight
+              ? 'Desmama antecipada — apto'
+              : noWeight
+              ? 'Desmama antecipada — verificar peso'
+              : 'Desmama antecipada — peso baixo'
+          } else {
+            title = meetsWeight
+              ? 'Pronto para desmamar'
+              : noWeight
+              ? 'Verificar peso — possível desmama'
+              : `Peso insuficiente (${weightKg} kg)`
+          }
 
           const reason = [
             `${ageDays} dias de idade`,
             weightKg !== null ? `${weightKg} kg` : 'peso não registrado',
-            meetsAge && meetsWeight ? '✓ Apto para desmama' : meetsAge && !meetsWeight ? '✗ Mínimo 100 kg' : '',
+            !meetsAge    ? `aguardando ${60 - ageDays} dias` :
+            isEarlyWindow && meetsWeight  ? '✓ Bezerro destaque — pode desmamar' :
+            isEarlyWindow && !meetsWeight ? '⚠ Desmama antecipada (60–90 dias)' :
+            meetsWeight                   ? '✓ Apto para desmama' : '✗ Mínimo 100 kg',
           ].filter(Boolean).join(' · ')
 
-          const priority: ManagementPriority = meetsAge && meetsWeight ? 'HIGH' : meetsAge ? 'MEDIUM' : 'LOW'
+          const priority: ManagementPriority =
+            !meetsAge               ? 'LOW'
+            : isEarlyWindow && meetsWeight  ? 'MEDIUM'
+            : isEarlyWindow                 ? 'LOW'
+            : meetsWeight                   ? 'HIGH'
+            :                                 'MEDIUM'
 
           const it: ManagementActionItem = {
             ...item(`${a.id}-weaning`, base, origin, 'WEANING_DUE', priority, title, reason, ageDays),

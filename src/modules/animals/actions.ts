@@ -1366,7 +1366,7 @@ export async function registerWeaning(rawData: unknown): Promise<ActionResult> {
     const today = new Date()
     if (animal.birthDate) {
       const ageDays = Math.floor((today.getTime() - new Date(animal.birthDate).getTime()) / (24 * 60 * 60 * 1000))
-      if (ageDays < 90) return { success: false, error: `Bezerro com apenas ${ageDays} dias (mínimo 90)` }
+      if (ageDays < 60) return { success: false, error: `Bezerro com apenas ${ageDays} dias (mínimo 60)` }
     }
 
     // Categoria pós-desmama: fêmea → HEIFER, macho → STEER

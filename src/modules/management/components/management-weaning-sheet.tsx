@@ -35,10 +35,11 @@ export function ManagementWeaningSheet({
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
 
-  const meetsAge    = ageDays !== null && ageDays >= 90
-  const meetsWeight = weightKg !== null && weightKg >= 100
-  const noWeight    = weightKg === null
-  const canWean     = meetsAge && (meetsWeight || noWeight)
+  const meetsAge      = ageDays !== null && ageDays >= 60
+  const isEarlyWindow = ageDays !== null && ageDays >= 60 && ageDays < 90
+  const meetsWeight   = weightKg !== null && weightKg >= 100
+  const noWeight      = weightKg === null
+  const canWean       = meetsAge && (meetsWeight || noWeight)
 
   const newCategory = sex === 'FEMALE' ? 'Novilha (HEIFER)' : 'Garrote (STEER)'
 
@@ -75,7 +76,9 @@ export function ManagementWeaningSheet({
               <div className="text-lg font-bold">{ageDays ?? '—'}</div>
               <div className="text-xs text-muted-foreground">dias de idade</div>
               <div className={cn('text-xs font-medium mt-0.5', meetsAge ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400')}>
-                {meetsAge ? '✓ ≥ 90 dias' : `✗ faltam ${ageDays !== null ? 90 - ageDays : '?'} dias`}
+                {meetsAge
+                  ? isEarlyWindow ? '⚡ Desmama antecipada' : '✓ ≥ 90 dias'
+                  : `✗ faltam ${ageDays !== null ? 60 - ageDays : '?'} dias`}
               </div>
             </div>
             <div className={cn(
@@ -97,9 +100,26 @@ export function ManagementWeaningSheet({
 
           {/* Aviso se abaixo do peso */}
           {!noWeight && !meetsWeight && (
-            <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-800 p-3 text-sm text-red-700 dark:text-red-300 flex items-start gap-2">
+            <div className={cn(
+              'rounded-lg border p-3 text-sm flex items-start gap-2',
+              isEarlyWindow
+                ? 'border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 text-amber-700 dark:text-amber-300'
+                : 'border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-800 text-red-700 dark:text-red-300',
+            )}>
               <AlertTriangle className="size-4 shrink-0 mt-0.5" />
-              <span>Bezerro abaixo do peso mínimo (100 kg). Registre uma pesagem antes de desmamar.</span>
+              <span>
+                {isEarlyWindow
+                  ? 'Bezerro ainda abaixo de 100 kg. Para desmama antecipada, recomenda-se aguardar atingir o peso ideal.'
+                  : 'Bezerro abaixo do peso mínimo (100 kg). Registre uma pesagem antes de desmamar.'}
+              </span>
+            </div>
+          )}
+
+          {/* Aviso de desmama antecipada */}
+          {isEarlyWindow && canWean && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300 flex items-start gap-2">
+              <AlertTriangle className="size-4 shrink-0 mt-0.5" />
+              <span>Desmama antecipada ({ageDays} dias). Indicada para bezerros destaque. Os demais podem continuar até 90 dias.</span>
             </div>
           )}
 
