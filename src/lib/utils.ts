@@ -6,6 +6,7 @@ import {
   differenceInDays,
   differenceInMonths,
   differenceInYears,
+  startOfDay,
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -39,8 +40,9 @@ export function formatMonth(date: Date | string | null | undefined): string {
 
 export function calculateAge(birthDate: Date | string | null | undefined): string {
   if (!birthDate) return '—'
-  const date  = new Date(birthDate)
-  const today = new Date()
+  // Trunca para meia-noite: a idade vira à virada do dia, não na hora exata do nascimento
+  const date  = startOfDay(new Date(birthDate))
+  const today = startOfDay(new Date())
 
   const years = differenceInYears(today, date)
   if (years >= 1) {
