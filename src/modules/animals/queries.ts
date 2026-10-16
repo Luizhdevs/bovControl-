@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
+import { unstable_cache } from 'next/cache'
 import { subDays } from 'date-fns'
 import type { AnimalFiltersInput } from './schema'
 import type {
@@ -277,7 +278,7 @@ export async function getLotsForSelect(farmId: string): Promise<LotSelectOption[
 
 // ─── Estatísticas ──────────────────────────────────────────
 
-export async function getAnimalStats(farmId: string): Promise<AnimalStats> {
+async function _getAnimalStats(farmId: string): Promise<AnimalStats> {
   const [byCategory, bySex] = await Promise.all([
     prisma.animal.groupBy({
       by:    ['category'],
@@ -306,6 +307,12 @@ export async function getAnimalStats(farmId: string): Promise<AnimalStats> {
     males:   countBySex('MALE'),
   }
 }
+
+export const getAnimalStats = unstable_cache(
+  _getAnimalStats,
+  ['animal-stats'],
+  { revalidate: 30, tags: ['animal-stats'] },
+)
 
 // ─── Animais recém adicionados ────────────────────────────
 

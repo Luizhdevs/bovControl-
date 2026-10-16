@@ -1,6 +1,6 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { Prisma as PrismaTypes } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
@@ -123,6 +123,7 @@ export async function createAnimal(
     })
 
     revalidatePath('/animals')
+    revalidateTag('animal-stats')
 
     return { success: true, data: { id: animal.id } }
   } catch (error) {
@@ -187,6 +188,7 @@ export async function updateAnimal(
     })
 
     revalidatePath('/animals')
+    revalidateTag('animal-stats')
     revalidatePath(`/animals/${animalId}`)
 
     return { success: true, data: undefined }
@@ -258,6 +260,7 @@ export async function transferAnimalToLot(
     })
 
     revalidatePath('/animals')
+    revalidateTag('animal-stats')
     revalidatePath(`/animals/${parsed.data.animalId}`)
 
     return { success: true, data: undefined }
@@ -579,6 +582,7 @@ export async function deactivateAnimal(
     })
 
     revalidatePath('/animals')
+    revalidateTag('animal-stats')
     revalidatePath(`/animals/${animalId}`)
     // Revalida página do lote de origem para atualizar contagem de animais
     if (animal.lotId) {
@@ -648,6 +652,7 @@ export async function markAnimalAsSold(rawData: unknown): Promise<ActionResult<v
     })
 
     revalidatePath('/animals')
+    revalidateTag('animal-stats')
     revalidatePath(`/animals/${parsed.data.animalId}`)
     revalidatePath('/management/today')
 
@@ -708,6 +713,7 @@ export async function markAnimalAsDead(rawData: unknown): Promise<ActionResult<v
     })
 
     revalidatePath('/animals')
+    revalidateTag('animal-stats')
     revalidatePath(`/animals/${parsed.data.animalId}`)
     revalidatePath('/management/today')
 
@@ -768,6 +774,7 @@ export async function markAnimalAsTransferred(rawData: unknown): Promise<ActionR
     })
 
     revalidatePath('/animals')
+    revalidateTag('animal-stats')
     revalidatePath(`/animals/${parsed.data.animalId}`)
     revalidatePath('/management/today')
 
@@ -837,6 +844,7 @@ export async function reactivateAnimal(rawData: unknown): Promise<ActionResult<v
     })
 
     revalidatePath('/animals')
+    revalidateTag('animal-stats')
     revalidatePath(`/animals/${parsed.data.animalId}`)
     revalidatePath('/management/today')
 
@@ -950,6 +958,7 @@ export async function registerCalving(
     })
 
     revalidatePath('/animals')
+    revalidateTag('animal-stats')
     revalidatePath(`/animals/${animalId}`)
     revalidatePath('/management/today')
     revalidatePath('/reproduction')
@@ -1058,6 +1067,7 @@ export async function registerDryOff(
     })
 
     revalidatePath('/animals')
+    revalidateTag('animal-stats')
     revalidatePath(`/animals/${animalId}`)
     revalidatePath('/management/today')
 
@@ -1191,6 +1201,7 @@ export async function registerAbortion(rawData: unknown): Promise<ActionResult> 
     })
 
     revalidatePath('/animals')
+    revalidateTag('animal-stats')
     revalidatePath(`/animals/${animalId}`)
     revalidatePath('/management/today')
 
@@ -1311,6 +1322,7 @@ export async function registerStillbirth(rawData: unknown): Promise<ActionResult
     })
 
     revalidatePath('/animals')
+    revalidateTag('animal-stats')
     revalidatePath(`/animals/${animalId}`)
     revalidatePath(`/animals/${calveId}`)
     revalidatePath('/management/today')
@@ -1393,6 +1405,7 @@ export async function registerWeaning(rawData: unknown): Promise<ActionResult> {
     })
 
     revalidatePath('/animals')
+    revalidateTag('animal-stats')
     revalidatePath(`/animals/${animalId}`)
     revalidatePath('/management/today')
 

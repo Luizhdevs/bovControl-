@@ -194,7 +194,17 @@ async function AnimalListAsync({
   )
 }
 
-// ─── Skeleton ──────────────────────────────────────────────
+// ─── Skeletons ─────────────────────────────────────────────
+
+function AnimalStatsSkeleton() {
+  return (
+    <div className="flex gap-4 overflow-x-auto pb-1">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} className="shrink-0 w-16 h-[52px] rounded-xl bg-muted animate-pulse" />
+      ))}
+    </div>
+  )
+}
 
 function AnimalListSkeleton() {
   return (
@@ -236,7 +246,9 @@ export default async function AnimalsPage({ searchParams }: PageProps) {
         }
       />
 
-      <AnimalStatsBar farmId={farmId} searchParams={params} />
+      <Suspense fallback={<AnimalStatsSkeleton />}>
+        <AnimalStatsBar farmId={farmId} searchParams={params} />
+      </Suspense>
       <AnimalFilters lots={lots} pastures={pastures} />
 
       <Suspense fallback={<AnimalListSkeleton />}>
