@@ -72,7 +72,7 @@ function countActiveFilters(params: URLSearchParams): number {
   if (params.get('lotId'))     n++
   if (params.get('pastureId')) n++
   const s = params.get('status')
-  if (s && s !== 'ACTIVE') n++
+  if (s && s !== 'ACTIVE' && s !== 'ALL') n++
   return n
 }
 
@@ -157,7 +157,7 @@ export function AnimalFilters({
     if (next) {
       const statusRaw = params.get('status')
       setLocal({
-        status:    statusRaw ? statusRaw.split(',').filter(s => s !== 'ALL') : ['ACTIVE'],
+        status:    (!statusRaw || statusRaw === 'ALL') ? [] : statusRaw.split(',').filter(Boolean),
         category:  parseParam(params.get('category')),
         sex:       parseParam(params.get('sex')),
         agePreset: parseParam(params.get('agePreset')),
@@ -183,8 +183,8 @@ export function AnimalFilters({
   const applyFilters = useCallback(() => {
     const next = new URLSearchParams(params.toString())
 
-    // Status: vazio = remover param (todos); senão junta em vírgula
-    if (local.status.length === 0) next.delete('status')
+    // Status: vazio = 'ALL' (todas); sem param a página assume ACTIVE
+    if (local.status.length === 0) next.set('status', 'ALL')
     else next.set('status', local.status.join(','))
 
     const setOrDelete = (key: string, vals: string[]) => {
