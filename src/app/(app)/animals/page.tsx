@@ -25,25 +25,57 @@ interface PageProps {
 
 // ─── Stats bar ─────────────────────────────────────────────
 
-async function AnimalStatsBar({ farmId }: { farmId: string }) {
+async function AnimalStatsBar({
+  farmId,
+  searchParams,
+}: {
+  farmId:       string
+  searchParams: Record<string, string>
+}) {
   const stats = await getAnimalStats(farmId)
 
   const items = [
-    { label: 'Total',     value: stats.total,   color: 'text-foreground' },
-    { label: 'Vacas',     value: stats.cows,    color: 'text-purple-400' },
-    { label: 'Novilhas',  value: stats.heifers, color: 'text-blue-400'   },
-    { label: 'Bezerros',  value: stats.calves,  color: 'text-green-400'  },
-    { label: 'Touros',    value: stats.bulls,   color: 'text-red-400'    },
+    { label: 'Total',    value: stats.total,   color: 'text-foreground', category: null      },
+    { label: 'Vacas',    value: stats.cows,    color: 'text-purple-400', category: 'COW'     },
+    { label: 'Novilhas', value: stats.heifers, color: 'text-blue-400',   category: 'HEIFER'  },
+    { label: 'Bezerros', value: stats.calves,  color: 'text-green-400',  category: 'CALF'    },
+    { label: 'Touros',   value: stats.bulls,   color: 'text-red-400',    category: 'BULL'    },
   ]
+
+  const currentCategory = searchParams['category'] ?? null
+
+  function buildUrl(category: string | null) {
+    const sp = new URLSearchParams()
+    for (const [k, v] of Object.entries(searchParams)) {
+      if (k !== 'category' && k !== 'page' && v) sp.set(k, v)
+    }
+    if (category) sp.set('category', category)
+    const qs = sp.toString()
+    return `/animals${qs ? `?${qs}` : ''}`
+  }
 
   return (
     <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-none">
-      {items.map((item) => (
-        <div key={item.label} className="shrink-0 text-center">
-          <div className={`text-xl font-bold ${item.color}`}>{item.value}</div>
-          <div className="text-xs text-muted-foreground">{item.label}</div>
-        </div>
-      ))}
+      {items.map((item) => {
+        const isActive = item.category === null
+          ? !currentCategory
+          : currentCategory === item.category
+        return (
+          <Link
+            key={item.label}
+            href={buildUrl(item.category)}
+            className={cn(
+              'shrink-0 text-center rounded-xl px-3 py-1.5 transition-colors',
+              isActive
+                ? 'bg-muted ring-1 ring-border'
+                : 'hover:bg-muted/50',
+            )}
+          >
+            <div className={`text-xl font-bold tabular-nums ${item.color}`}>{item.value}</div>
+            <div className="text-xs text-muted-foreground">{item.label}</div>
+          </Link>
+        )
+      })}
     </div>
   )
 }
@@ -204,7 +236,7 @@ export default async function AnimalsPage({ searchParams }: PageProps) {
         }
       />
 
-      <AnimalStatsBar farmId={farmId} />
+      <AnimalStatsBar farmId={farmId} searchParams={params} />
       <AnimalFilters lots={lots} pastures={pastures} />
 
       <Suspense fallback={<AnimalListSkeleton />}>
