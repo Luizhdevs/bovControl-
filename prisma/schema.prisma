@@ -342,8 +342,8 @@ model TEProtocol {
   status      TEProtocolStatus @default(ACTIVE)
 
   // Cronograma do protocolo TETF
-  startDate      DateTime?       @db.Date // Dia 0: inserção do implante nas receptoras
-  withdrawalDate DateTime?       @db.Date // Dia 8: retirada do implante + hormônios
+  startDate      DateTime?       @db.Date @map("start_date")      // Dia 0: inserção do implante nas receptoras
+  withdrawalDate DateTime?       @db.Date @map("withdrawal_date") // Dia 8: retirada do implante + hormônios
   opuDate        DateTime?       @db.Date // OPU dos embriões (doadora) — pode ser null em TETF simples
   teDate         DateTime        @db.Date // Dia da transferência do embrião
 
@@ -380,9 +380,9 @@ model TEParticipation {
   sexo       String? // sexagem pré-TE do embrião: BX (bezerro) ou BL (bezerra)
 
   // Rastreamento por etapa
-  withdrawalDone Boolean @default(false)  // implante retirado + hormônios aplicados
-  teResponse     String? // 'RESPONDED' | 'NOT_RESPONDED' — resposta ao TE
-  sexagemResult  String? // resultado da sexagem no DG P60: 'FEMALE' | 'MALE' | 'ABSORBED'
+  withdrawalDone Boolean @default(false)  @map("withdrawal_done") // implante retirado + hormônios aplicados
+  teResponse     String?                  @map("te_response")     // 'RESPONDED' | 'NOT_RESPONDED' — resposta ao TE
+  sexagemResult  String?                  @map("sexagem_result")  // resultado da sexagem no DG P60: 'FEMALE' | 'MALE' | 'ABSORBED'
 
   discontinuedAt     DateTime?
   discontinuedReason String?
