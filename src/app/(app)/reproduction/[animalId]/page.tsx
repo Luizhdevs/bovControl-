@@ -1,5 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 import { auth } from '@/lib/auth'
 import { getActiveFarm } from '@/lib/active-farm'
 import { prisma } from '@/lib/prisma'
@@ -12,9 +14,72 @@ import {
   getAnimalReproductionSummary,
   getReproductionsByAnimal,
 } from '@/modules/reproduction/queries'
+import {
+  getAnimalTEParticipations,
+  type AnimalTEParticipation,
+  type TECurrentStage,
+} from '@/modules/reproduction/te-queries'
 import { PregnancyStatusBadge } from '@/modules/reproduction/components/pregnancy-status-badge'
 import { ExpectedCalvingCard } from '@/modules/reproduction/components/expected-calving-card'
 import { ReproductionTimeline } from '@/modules/reproduction/components/reproduction-timeline'
+
+// ─── Stage config ──────────────────────────────────────────
+
+const TE_STAGE_CONFIG: Record<TECurrentStage, { label: string; className: string }> = {
+  PENDING_WITHDRAWAL: { label: 'Aguardando Dia 8',    className: 'text-amber-400 bg-amber-400/10 border-amber-400/20' },
+  PENDING_TE:         { label: 'Aguardando TE',       className: 'text-blue-400 bg-blue-400/10 border-blue-400/20' },
+  TE_NO_RESPONSE:     { label: 'Sem resposta ao TE',  className: 'text-orange-400 bg-orange-400/10 border-orange-400/20' },
+  WAITING_P30:        { label: 'Aguardando DG P30',   className: 'text-violet-400 bg-violet-400/10 border-violet-400/20' },
+  WAITING_P60:        { label: 'Aguardando DG P60',   className: 'text-violet-400 bg-violet-400/10 border-violet-400/20' },
+  PRENHA:             { label: 'Prenha ✓',            className: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20' },
+  DISCONTINUED:       { label: 'Descontinuada',       className: 'text-muted-foreground bg-muted border-border' },
+}
+
+function TEProtocolRow({ p }: { p: AnimalTEParticipation }) {
+  const stage = TE_STAGE_CONFIG[p.currentDGStage]
+
+  return (
+    <Link
+      href={`/reproduction/protocolos/te?id=${p.protocolId}`}
+      className="block py-3 hover:bg-muted/30 transition-colors -mx-4 px-4"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="text-sm font-medium text-foreground truncate">{p.protocolName}</div>
+          <div className="text-xs text-muted-foreground">
+            TE: {format(new Date(p.teDate), "dd/MM/yyyy", { locale: ptBR })}
+            {p.prevParto && (
+              <> · Parto prev.: {format(new Date(p.prevParto), "dd/MM/yyyy", { locale: ptBR })}</>
+            )}
+          </div>
+          {(p.touro || p.donor) && (
+            <div className="text-xs text-muted-foreground space-x-2">
+              {p.touro  && <span>Pai: <span className="text-foreground">{p.touro}</span></span>}
+              {p.donor  && <span>Mãe: <span className="text-foreground">{p.donor}</span></span>}
+            </div>
+          )}
+          {(p.ovaQuality || p.sexo || p.sexagemResult) && (
+            <div className="text-xs text-muted-foreground space-x-2">
+              {p.ovaQuality    && <span>Qualidade: <span className="text-foreground">{p.ovaQuality}</span></span>}
+              {p.sexo          && <span>Sexo emb.: <span className="text-foreground">{p.sexo}</span></span>}
+              {p.sexagemResult && (
+                <span>
+                  Sexagem:{' '}
+                  <span className="text-foreground">
+                    {p.sexagemResult === 'FEMALE' ? '♀ Bezerra' : p.sexagemResult === 'MALE' ? '♂ Bezerro' : 'Absorvida'}
+                  </span>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        <span className={`shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${stage.className}`}>
+          {stage.label}
+        </span>
+      </div>
+    </Link>
+  )
+}
 
 // ─── Metadata dinâmica ─────────────────────────────────────
 
@@ -57,9 +122,10 @@ export default async function ReproductionAnimalPage({
   const { farmId, role } = activeFarm
   const canDelete        = ['OWNER', 'MANAGER'].includes(role)
 
-  const [summary, records] = await Promise.all([
+  const [summary, records, teParticipations] = await Promise.all([
     getAnimalReproductionSummary(animalId, farmId),
     getReproductionsByAnimal(animalId, farmId, 50),
+    getAnimalTEParticipations(animalId, farmId),
   ])
 
   if (!summary) notFound()
@@ -104,6 +170,21 @@ export default async function ReproductionAnimalPage({
           expectedCalvingDate={expectedCalvingDate}
           confirmedAt={summary.lastCheckDate}
         />
+      )}
+
+      {/* Protocolos TE */}
+      {teParticipations.length > 0 && (
+        <SectionCard
+          title="Protocolos TE"
+          subtitle={`${teParticipations.length} ${teParticipations.length === 1 ? 'protocolo' : 'protocolos'}`}
+          noPadding
+        >
+          <div className="px-4 divide-y divide-border/40">
+            {teParticipations.map((p) => (
+              <TEProtocolRow key={p.participationId} p={p} />
+            ))}
+          </div>
+        </SectionCard>
       )}
 
       {/* Botão registrar */}

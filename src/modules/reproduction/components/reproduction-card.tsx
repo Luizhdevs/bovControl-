@@ -101,11 +101,33 @@ export function ReproductionCard({
           {format(new Date(record.date), "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
         </div>
 
-        {record.bullName && (
-          <div className="text-xs text-muted-foreground">
-            Touro: <span className="text-foreground">{record.bullName}</span>
-          </div>
-        )}
+        {/* Para inseminação TE: exibir pai e mãe do embrião */}
+        {record.type === 'INSEMINATION' && record.notes && (() => {
+          try {
+            const data = JSON.parse(record.notes)
+            if (data?.tipo === 'TE') {
+              return (
+                <div className="text-xs text-muted-foreground space-y-0.5 mt-0.5">
+                  {data.touro   && <div>Pai: <span className="text-foreground">{data.touro}</span></div>}
+                  {data.doadora && <div>Mãe: <span className="text-foreground">{data.doadora}</span></div>}
+                  {data.ovaQuality && <div>Qualidade: <span className="text-foreground">{data.ovaQuality}</span></div>}
+                  {data.sexo    && <div>Sexo emb.: <span className="text-foreground">{data.sexo}</span></div>}
+                  {data.laboratorio && <div>Lab.: <span className="text-foreground">{data.laboratorio}</span></div>}
+                </div>
+              )
+            }
+          } catch { /* notes não é JSON */ }
+          return null
+        })()}
+
+        {/* Para inseminação regular: exibir boi */}
+        {record.type !== 'INSEMINATION' || !record.notes?.startsWith('{') ? (
+          record.bullName && (
+            <div className="text-xs text-muted-foreground">
+              Touro: <span className="text-foreground">{record.bullName}</span>
+            </div>
+          )
+        ) : null}
 
         {record.nextCheckDate && (
           <div className="text-xs text-muted-foreground">
@@ -116,7 +138,8 @@ export function ReproductionCard({
           </div>
         )}
 
-        {record.notes && (
+        {/* Notas livres (apenas se não for JSON TE) */}
+        {record.notes && !record.notes.startsWith('{') && (
           <div className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
             {record.notes}
           </div>

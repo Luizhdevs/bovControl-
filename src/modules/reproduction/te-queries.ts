@@ -187,6 +187,71 @@ export async function getTEProtocolDetail(
   }
 }
 
+// ─── Participações TE de um animal ─────────────────────────
+
+export interface AnimalTEParticipation {
+  participationId: string
+  protocolId:      string
+  protocolName:    string
+  teDate:          Date
+  prevParto:       Date | null
+  touro:           string | null
+  laboratorio:     string | null
+  currentDGStage:  TECurrentStage
+  participationStatus: 'ACTIVE' | 'DISCONTINUED' | 'COMPLETED'
+  donor:           string | null
+  ovaQuality:      string | null
+  sexo:            string | null
+  sexagemResult:   string | null
+}
+
+export async function getAnimalTEParticipations(
+  animalId: string,
+  farmId:   string,
+): Promise<AnimalTEParticipation[]> {
+  const participations = await prisma.tEParticipation.findMany({
+    where: {
+      animalId,
+      protocol: { farmId },
+    },
+    include: {
+      protocol:     { select: { id: true, name: true, teDate: true, prevParto: true, touro: true, laboratorio: true } },
+      reproduction: { select: { status: true } },
+    },
+    orderBy: { protocol: { teDate: 'desc' } },
+  })
+
+  return participations.map((p) => {
+    const partStatus = p.status as 'ACTIVE' | 'DISCONTINUED' | 'COMPLETED'
+    const dgStatus   = (p.reproduction?.status ?? null) as 'PENDING' | 'CONFIRMED' | 'FAILED' | null
+
+    const currentDGStage: TECurrentStage =
+      partStatus === 'DISCONTINUED'           ? 'DISCONTINUED' :
+      partStatus === 'COMPLETED'              ? 'PRENHA' :
+      p.teResponse === 'NOT_RESPONDED'        ? 'TE_NO_RESPONSE' :
+      dgStatus    === 'CONFIRMED'             ? 'WAITING_P60' :
+      p.teResponse === 'RESPONDED'            ? 'WAITING_P30' :
+      p.withdrawalDone                        ? 'PENDING_TE' :
+                                               'PENDING_WITHDRAWAL'
+
+    return {
+      participationId:     p.id,
+      protocolId:          p.protocol.id,
+      protocolName:        p.protocol.name,
+      teDate:              p.protocol.teDate,
+      prevParto:           p.protocol.prevParto,
+      touro:               p.protocol.touro,
+      laboratorio:         p.protocol.laboratorio,
+      currentDGStage,
+      participationStatus: partStatus,
+      donor:               p.donor,
+      ovaQuality:          p.ovaQuality,
+      sexo:                p.sexo,
+      sexagemResult:       p.sexagemResult,
+    }
+  })
+}
+
 // Animais elegíveis: fêmeas ativas sem participação ACTIVE em outro protocolo
 export async function getAnimalsEligibleForTE(farmId: string): Promise<
   { id: string; tag: string; name: string | null; category: string }[]
