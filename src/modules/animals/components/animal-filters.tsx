@@ -179,8 +179,9 @@ export function AnimalFilters({
     setOpen(next)
   }
 
-  // Toggle um valor dentro de um campo multi-select
-  function toggle(field: keyof LocalFilters, value: string) {
+  // Toggle um valor dentro de um campo multi-select (somente campos array)
+  type ArrayFilterField = Exclude<keyof LocalFilters, 'sortBy'>
+  function toggle(field: ArrayFilterField, value: string) {
     setLocal(prev => {
       const curr = prev[field]
       const next = curr.includes(value)
