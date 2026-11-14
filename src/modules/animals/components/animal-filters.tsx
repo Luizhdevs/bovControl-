@@ -50,6 +50,12 @@ const AGE_OPTIONS = [
 interface LotOption     { id: string; name: string }
 interface PastureOption { id: string; name: string }
 
+const SORT_OPTIONS = [
+  { label: 'Nº brinco',    value: 'tag'      },
+  { label: 'Mais novo ↑',  value: 'age_desc' },
+  { label: 'Mais velho ↑', value: 'age_asc'  },
+]
+
 type LocalFilters = {
   status:    string[]   // vazio = ALL (sem filtro de status)
   category:  string[]
@@ -57,6 +63,7 @@ type LocalFilters = {
   agePreset: string[]
   lotId:     string[]
   pastureId: string[]
+  sortBy:    string
 }
 
 function parseParam(val: string | null): string[] {
@@ -73,6 +80,8 @@ function countActiveFilters(params: URLSearchParams): number {
   if (params.get('pastureId')) n++
   const s = params.get('status')
   if (s && s !== 'ACTIVE' && s !== 'ALL') n++
+  const sort = params.get('sortBy')
+  if (sort && sort !== 'tag') n++
   return n
 }
 
@@ -147,6 +156,7 @@ export function AnimalFilters({
     agePreset: [],
     lotId:     [],
     pastureId: [],
+    sortBy:    'tag',
   })
 
   const search      = params.get('search')    ?? ''
@@ -163,6 +173,7 @@ export function AnimalFilters({
         agePreset: parseParam(params.get('agePreset')),
         lotId:     parseParam(params.get('lotId')),
         pastureId: parseParam(params.get('pastureId')),
+        sortBy:    params.get('sortBy') ?? 'tag',
       })
     }
     setOpen(next)
@@ -197,6 +208,9 @@ export function AnimalFilters({
     setOrDelete('lotId',     local.lotId)
     setOrDelete('pastureId', local.pastureId)
 
+    if (!local.sortBy || local.sortBy === 'tag') next.delete('sortBy')
+    else next.set('sortBy', local.sortBy)
+
     next.delete('page')
     startTransition(() => {
       router.replace(`${pathname}?${next.toString()}`)
@@ -205,7 +219,7 @@ export function AnimalFilters({
   }, [local, params, pathname, router])
 
   const clearAll = useCallback(() => {
-    setLocal({ status: [], category: [], sex: [], agePreset: [], lotId: [], pastureId: [] })
+    setLocal({ status: [], category: [], sex: [], agePreset: [], lotId: [], pastureId: [], sortBy: 'tag' })
   }, [])
 
   const handleSearch = useDebounce((value: string) => {
@@ -224,7 +238,8 @@ export function AnimalFilters({
     (local.sex.length       > 0 ? 1 : 0) +
     (local.agePreset.length > 0 ? 1 : 0) +
     (local.lotId.length     > 0 ? 1 : 0) +
-    (local.pastureId.length > 0 ? 1 : 0)
+    (local.pastureId.length > 0 ? 1 : 0) +
+    (local.sortBy !== 'tag' ? 1 : 0)
 
   return (
     <>
@@ -375,6 +390,18 @@ export function AnimalFilters({
                 ))}
               </FilterSection>
             )}
+
+            {/* Ordenar */}
+            <FilterSection title="Ordenar por">
+              {SORT_OPTIONS.map((opt) => (
+                <Chip
+                  key={opt.value}
+                  label={opt.label}
+                  active={local.sortBy === opt.value}
+                  onClick={() => setLocal(p => ({ ...p, sortBy: opt.value }))}
+                />
+              ))}
+            </FilterSection>
 
             <Button
               className="w-full h-12 text-base mt-2"

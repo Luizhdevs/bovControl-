@@ -123,6 +123,7 @@ export const animalFiltersSchema = z.object({
   lotId:     z.string().optional(),      // 'none' = animais sem lote
   pastureId: z.string().optional(),      // 'none' = lotes sem pasto
   agePreset: z.string().optional(),
+  sortBy:    z.enum(['tag', 'age_asc', 'age_desc']).default('tag'),
 })
 
 export type AnimalFiltersInput = z.infer<typeof animalFiltersSchema>

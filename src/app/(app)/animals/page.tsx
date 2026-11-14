@@ -163,6 +163,7 @@ async function AnimalListAsync({
     lotId:     searchParams['lotId'],
     pastureId: searchParams['pastureId'],
     agePreset: searchParams['agePreset'],
+    sortBy:    searchParams['sortBy'],
   })
 
   const page = Math.max(1, parseInt(searchParams['page'] ?? '1', 10) || 1)

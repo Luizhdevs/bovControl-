@@ -184,11 +184,17 @@ export async function getAnimalsByFarm(
   const where = buildAnimalWhere(farmId, filters)
   const skip  = (page - 1) * pageSize
 
+  const { sortBy = 'tag' } = filters
+  const orderBy: Prisma.AnimalOrderByWithRelationInput[] =
+    sortBy === 'age_desc' ? [{ birthDate: { sort: 'desc', nulls: 'last' } }, { tag: 'asc' }] :
+    sortBy === 'age_asc'  ? [{ birthDate: { sort: 'asc',  nulls: 'last' } }, { tag: 'asc' }] :
+    /* tag */               [{ category: 'asc' }, { tag: 'asc' }]
+
   const [animals, total] = await Promise.all([
     prisma.animal.findMany({
       where,
       select:  ANIMAL_LIST_SELECT,
-      orderBy: [{ category: 'asc' }, { tag: 'asc' }],
+      orderBy,
       skip,
       take:    pageSize,
     }),
