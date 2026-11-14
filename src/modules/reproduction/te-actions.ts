@@ -10,6 +10,8 @@ import { auditCreate, auditUpdate } from '@/lib/audit'
 import type { ActionResult } from './types'
 
 export type DGStage = 'DG_P30' | 'DG_P60'
+export type TEResponse = 'RESPONDED' | 'NOT_RESPONDED'
+export type SexagemResult = 'FEMALE' | 'MALE' | 'ABSORBED'
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -24,23 +26,24 @@ async function getSessionFarm() {
 // ─── Criar protocolo TE ────────────────────────────────────
 
 interface CreateTEProtocolInput {
-  name:        string
-  opuDate:     string   // ISO date
-  teDate:      string
-  laboratorio: string
-  touro:       string
-  doadoras?:   string
-  dgP30Start?: string
-  dgP30End?:   string
-  dgP60Start?: string
-  dgP60End?:   string
-  prevParto?:  string
-  // Animais selecionados com dados individuais
+  name:            string
+  startDate?:      string   // Dia 0: inserção do implante
+  withdrawalDate?: string   // Dia 8: retirada + hormônios
+  opuDate?:        string   // ISO date — opcional
+  teDate:          string
+  laboratorio:     string
+  touro:           string
+  doadoras?:       string
+  dgP30Start?:     string
+  dgP30End?:       string
+  dgP60Start?:     string
+  dgP60End?:       string
+  prevParto?:      string
   animals: {
-    animalId:   string
-    donor?:     string
+    animalId:    string
+    donor?:      string
     ovaQuality?: string
-    sexo?:      string
+    sexo?:       string
   }[]
 }
 
@@ -89,12 +92,14 @@ export async function createTEProtocol(
       const proto = await tx.tEProtocol.create({
         data: {
           farmId,
-          name:        input.name.trim(),
-          opuDate:     new Date(input.opuDate),
+          name:           input.name.trim(),
+          startDate:      input.startDate      ? new Date(input.startDate)      : null,
+          withdrawalDate: input.withdrawalDate ? new Date(input.withdrawalDate) : null,
+          opuDate:        input.opuDate        ? new Date(input.opuDate)        : null,
           teDate,
-          laboratorio: input.laboratorio || null,
-          touro:       input.touro       || null,
-          doadoras:    input.doadoras    || null,
+          laboratorio:    input.laboratorio || null,
+          touro:          input.touro       || null,
+          doadoras:       input.doadoras    || null,
           dgP30Start:  input.dgP30Start ? new Date(input.dgP30Start) : null,
           dgP30End:    input.dgP30End   ? new Date(input.dgP30End)   : null,
           dgP60Start:  input.dgP60Start ? new Date(input.dgP60Start) : null,
@@ -257,10 +262,98 @@ export async function migrateLegacyTEProtocol(): Promise<ActionResult<{ id: stri
 
 // ─── Registrar resultado do DG ─────────────────────────────
 
+// ─── Registrar aplicação de hormônios (Dia 8) ─────────────
+
+export async function recordWithdrawal(
+  participationId: string,
+): Promise<ActionResult<void>> {
+  try {
+    const sf = await getSessionFarm()
+    if (!sf) return { success: false, error: 'Não autorizado' }
+    const { userId, farmId } = sf
+
+    await requireFarmAccess(userId, farmId, 'MANAGER')
+
+    const participation = await prisma.tEParticipation.findFirst({
+      where: { id: participationId, status: 'ACTIVE', protocol: { farmId } },
+      select: { id: true, animalId: true, withdrawalDone: true },
+    })
+    if (!participation)        return { success: false, error: 'Participação não encontrada' }
+    if (participation.withdrawalDone) return { success: false, error: 'Hormônios já registrados' }
+
+    await prisma.tEParticipation.update({
+      where: { id: participationId },
+      data:  { withdrawalDone: true },
+    })
+
+    auditUpdate({
+      farmId, userId,
+      entity:   'TEParticipation',
+      entityId: participationId,
+      before:   { withdrawalDone: false },
+      after:    { withdrawalDone: true },
+      metadata: { source: 'web', event: 'TE_WITHDRAWAL_DONE' },
+    })
+
+    revalidatePath('/reproduction/protocolos/te')
+    revalidatePath(`/reproduction/${participation.animalId}`)
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[recordWithdrawal]', error)
+    return { success: false, error: 'Erro ao registrar. Tente novamente.' }
+  }
+}
+
+// ─── Registrar resposta ao TE ──────────────────────────────
+
+export async function recordTEResponse(
+  participationId: string,
+  response:        TEResponse,
+): Promise<ActionResult<void>> {
+  try {
+    const sf = await getSessionFarm()
+    if (!sf) return { success: false, error: 'Não autorizado' }
+    const { userId, farmId } = sf
+
+    await requireFarmAccess(userId, farmId, 'MANAGER')
+
+    const participation = await prisma.tEParticipation.findFirst({
+      where: { id: participationId, status: 'ACTIVE', protocol: { farmId } },
+      select: { id: true, animalId: true, withdrawalDone: true, teResponse: true },
+    })
+    if (!participation)              return { success: false, error: 'Participação não encontrada' }
+    if (!participation.withdrawalDone) return { success: false, error: 'Registre os hormônios primeiro' }
+
+    await prisma.tEParticipation.update({
+      where: { id: participationId },
+      data:  { teResponse: response },
+    })
+
+    auditUpdate({
+      farmId, userId,
+      entity:   'TEParticipation',
+      entityId: participationId,
+      before:   { teResponse: participation.teResponse },
+      after:    { teResponse: response },
+      metadata: { source: 'web', event: 'TE_RESPONSE_RECORDED', response },
+    })
+
+    revalidatePath('/reproduction/protocolos/te')
+    revalidatePath(`/reproduction/${participation.animalId}`)
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[recordTEResponse]', error)
+    return { success: false, error: 'Erro ao registrar. Tente novamente.' }
+  }
+}
+
+// ─── Registrar resultado do DG ─────────────────────────────
+
 export async function updateDGResult(
   participationId: string,
   dgStage:         DGStage,
   newStatus:       'CONFIRMED' | 'FAILED',
+  sexagemResult?:  SexagemResult,
   observation?:    string,
 ): Promise<ActionResult<void>> {
   try {
@@ -328,9 +421,12 @@ export async function updateDGResult(
         where: { id: participationId },
         data: {
           status: newPartStatus as any,
+          ...(sexagemResult ? { sexagemResult } : {}),
           ...(newStatus === 'FAILED' ? {
             discontinuedAt:     new Date(),
-            discontinuedReason: `${dgStage} negativo${observation ? ': ' + observation : ''}`,
+            discontinuedReason: sexagemResult === 'ABSORBED'
+              ? `Absorção embrionária${observation ? ': ' + observation : ''}`
+              : `${dgStage} negativo${observation ? ': ' + observation : ''}`,
           } : {}),
         },
       })
@@ -342,7 +438,7 @@ export async function updateDGResult(
       entity:   'TEParticipation',
       entityId: participationId,
       before:   { status: participation.status },
-      after:    { dgStage, result: newStatus, resultText },
+      after:    { dgStage, result: newStatus, resultText, sexagemResult: sexagemResult ?? null },
       metadata: { source: 'web', event: 'TE_DG_UPDATE', dgStage },
     })
 

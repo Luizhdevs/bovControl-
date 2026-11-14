@@ -33,17 +33,19 @@ export function NewProtocolForm({ animals }: Props) {
   const [error, setError]          = useState<string | null>(null)
 
   // Campos do protocolo
-  const [name,        setName]        = useState('')
-  const [opuDate,     setOpuDate]     = useState('')
-  const [teDate,      setTeDate]      = useState('')
-  const [laboratorio, setLaboratorio] = useState('')
-  const [touro,       setTouro]       = useState('')
-  const [doadoras,    setDoadoras]    = useState('')
-  const [dgP30Start,  setDgP30Start]  = useState('')
-  const [dgP30End,    setDgP30End]    = useState('')
-  const [dgP60Start,  setDgP60Start]  = useState('')
-  const [dgP60End,    setDgP60End]    = useState('')
-  const [prevParto,   setPrevParto]   = useState('')
+  const [name,           setName]           = useState('')
+  const [startDate,      setStartDate]      = useState('')
+  const [withdrawalDate, setWithdrawalDate] = useState('')
+  const [opuDate,        setOpuDate]        = useState('')
+  const [teDate,         setTeDate]         = useState('')
+  const [laboratorio,    setLaboratorio]    = useState('')
+  const [touro,          setTouro]          = useState('')
+  const [doadoras,       setDoadoras]       = useState('')
+  const [dgP30Start,     setDgP30Start]     = useState('')
+  const [dgP30End,       setDgP30End]       = useState('')
+  const [dgP60Start,     setDgP60Start]     = useState('')
+  const [dgP60End,       setDgP60End]       = useState('')
+  const [prevParto,      setPrevParto]      = useState('')
 
   // Animais selecionados
   const [selected, setSelected] = useState<Map<string, SelectedAnimal>>(new Map())
@@ -78,8 +80,10 @@ export function NewProtocolForm({ animals }: Props) {
 
     startTransition(async () => {
       const result = await createTEProtocol({
-        name:        name || `TE ${teDate.slice(0, 7).replace('-', '/')} — ${touro}`,
-        opuDate,
+        name:           name || `TE ${teDate.slice(0, 7).replace('-', '/')} — ${touro}`,
+        startDate:      startDate      || undefined,
+        withdrawalDate: withdrawalDate || undefined,
+        opuDate:        opuDate        || undefined,
         teDate,
         laboratorio,
         touro,
@@ -121,11 +125,30 @@ export function NewProtocolForm({ animals }: Props) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label htmlFor="opuDate" className="text-xs text-muted-foreground">Data OPU *</Label>
+              <Label htmlFor="startDate" className="text-xs text-muted-foreground">Dia 0 — Implante</Label>
+              <Input
+                id="startDate"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="withdrawalDate" className="text-xs text-muted-foreground">Dia 8 — Hormônios</Label>
+              <Input
+                id="withdrawalDate"
+                type="date"
+                value={withdrawalDate}
+                onChange={(e) => setWithdrawalDate(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="opuDate" className="text-xs text-muted-foreground">Data OPU</Label>
               <Input
                 id="opuDate"
                 type="date"
-                required
                 value={opuDate}
                 onChange={(e) => setOpuDate(e.target.value)}
                 className="mt-1"

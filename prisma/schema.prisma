@@ -341,12 +341,15 @@ model TEProtocol {
   name        String          // ex: "TE Set/2026 — ROZTAC-ET"
   status      TEProtocolStatus @default(ACTIVE)
 
-  opuDate     DateTime        @db.Date
-  teDate      DateTime        @db.Date
+  // Cronograma do protocolo TETF
+  startDate      DateTime?       @db.Date // Dia 0: inserção do implante nas receptoras
+  withdrawalDate DateTime?       @db.Date // Dia 8: retirada do implante + hormônios
+  opuDate        DateTime?       @db.Date // OPU dos embriões (doadora) — pode ser null em TETF simples
+  teDate         DateTime        @db.Date // Dia da transferência do embrião
 
   laboratorio String?
   touro       String?
-  doadoras    String?         @db.Text // texto livre, ex: "AMARILIS EMO 73 / URBANISTA FIV PRLB"
+  doadoras    String?         @db.Text
 
   dgP30Start  DateTime?       @db.Date
   dgP30End    DateTime?       @db.Date
@@ -370,11 +373,16 @@ model TEParticipation {
   protocolId     String
   animalId       String
   status         TEParticipationStatus @default(ACTIVE)
-  reproductionId String?               @unique // FK → Reproduction do TE desta receptora
+  reproductionId String?               @unique
 
   donor      String? // doadora específica desta receptora
   ovaQuality String? // qualidade do óvulo: D1-D4, E1-E4, etc.
-  sexo       String? // sexagem do embrião: BX (bezerro) ou BL (bezerra)
+  sexo       String? // sexagem pré-TE do embrião: BX (bezerro) ou BL (bezerra)
+
+  // Rastreamento por etapa
+  withdrawalDone Boolean @default(false)  // implante retirado + hormônios aplicados
+  teResponse     String? // 'RESPONDED' | 'NOT_RESPONDED' — resposta ao TE
+  sexagemResult  String? // resultado da sexagem no DG P60: 'FEMALE' | 'MALE' | 'ABSORBED'
 
   discontinuedAt     DateTime?
   discontinuedReason String?

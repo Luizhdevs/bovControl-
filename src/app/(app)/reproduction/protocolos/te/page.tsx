@@ -60,6 +60,7 @@ function AnimalRow({ p }: { p: TEParticipationEntry }) {
         <DGUpdateButton
           participationId={p.participationId}
           currentDGStage={p.currentDGStage}
+          sexagemResult={p.sexagemResult}
         />
       </div>
     </div>
@@ -87,16 +88,19 @@ async function ProtocolDetail({
     )
   }
 
-  // Separar em 4 grupos por etapa
-  const waitingP30   = protocol.participations.filter((p) => p.currentDGStage === 'WAITING_P30')
-  const waitingP60   = protocol.participations.filter((p) => p.currentDGStage === 'WAITING_P60')
-  const completed    = protocol.participations.filter((p) => p.currentDGStage === 'PRENHA')
-  const discontinued = protocol.participations.filter((p) => p.currentDGStage === 'DISCONTINUED')
+  const pendingWithdrawal = protocol.participations.filter((p) => p.currentDGStage === 'PENDING_WITHDRAWAL')
+  const pendingTE         = protocol.participations.filter((p) => p.currentDGStage === 'PENDING_TE')
+  const noResponse        = protocol.participations.filter((p) => p.currentDGStage === 'TE_NO_RESPONSE')
+  const waitingP30        = protocol.participations.filter((p) => p.currentDGStage === 'WAITING_P30')
+  const waitingP60        = protocol.participations.filter((p) => p.currentDGStage === 'WAITING_P60')
+  const completed         = protocol.participations.filter((p) => p.currentDGStage === 'PRENHA')
+  const discontinued      = protocol.participations.filter((p) => p.currentDGStage === 'DISCONTINUED')
+  const inProtocol        = pendingWithdrawal.length + pendingTE.length + noResponse.length + waitingP30.length + waitingP60.length
 
   return (
     <div className="space-y-4">
       {/* Resumo do protocolo */}
-      <SectionCard title="Protocolo" subtitle={`OPU ${fmt(protocol.opuDate)} · TE ${fmt(protocol.teDate)}`}>
+      <SectionCard title="Protocolo" subtitle={`TE ${fmt(protocol.teDate)}`}>
         <div className="space-y-1.5 text-sm">
           {protocol.laboratorio && (
             <div className="flex justify-between">
@@ -142,18 +146,51 @@ async function ProtocolDetail({
           <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Prenhes</div>
         </div>
         <div className="rounded-xl border border-border bg-card p-3 text-center">
-          <div className="text-xl font-bold text-amber-500 tabular-nums">{waitingP30.length}</div>
-          <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">DG P30</div>
+          <div className="text-xl font-bold text-sky-500 tabular-nums">{inProtocol}</div>
+          <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Em protocolo</div>
         </div>
         <div className="rounded-xl border border-border bg-card p-3 text-center">
-          <div className="text-xl font-bold text-violet-500 tabular-nums">{waitingP60.length}</div>
-          <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">DG P60</div>
+          <div className="text-xl font-bold text-violet-500 tabular-nums">{waitingP30.length + waitingP60.length}</div>
+          <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Aguard. DG</div>
         </div>
         <div className="rounded-xl border border-border bg-card p-3 text-center">
           <div className="text-xl font-bold text-zinc-400 tabular-nums">{discontinued.length}</div>
           <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">Descont.</div>
         </div>
       </div>
+
+      {/* Implante inserido — aguardando Dia 8 */}
+      {pendingWithdrawal.length > 0 && (
+        <SectionCard title="Aguardando Dia 8 — Hormônios" subtitle={`${pendingWithdrawal.length} receptora${pendingWithdrawal.length !== 1 ? 's' : ''} · SINCROCIO + SINCROCP + SINCROECG`} noPadding>
+          <div className="divide-y divide-border/40">
+            {pendingWithdrawal.map((p) => (
+              <AnimalRow key={p.participationId} p={p} />
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Hormônios aplicados — aguardando TE */}
+      {pendingTE.length > 0 && (
+        <SectionCard title="Aguardando TE" subtitle={`${pendingTE.length} · hormônios ✓`} noPadding>
+          <div className="divide-y divide-border/40">
+            {pendingTE.map((p) => (
+              <AnimalRow key={p.participationId} p={p} />
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Sem resposta ao TE */}
+      {noResponse.length > 0 && (
+        <SectionCard title="Sem resposta ao TE" subtitle={`${noResponse.length} · aguardando decisão`} noPadding>
+          <div className="divide-y divide-border/40">
+            {noResponse.map((p) => (
+              <AnimalRow key={p.participationId} p={p} />
+            ))}
+          </div>
+        </SectionCard>
+      )}
 
       {/* Receptoras aguardando DG P30 */}
       {waitingP30.length > 0 && (
@@ -192,8 +229,14 @@ async function ProtocolDetail({
                     <span className="rounded px-1 py-px bg-muted text-[10px] font-mono">{p.sexo}</span>
                   )}
                 </div>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-medium shrink-0">
-                  Prenha ✓
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${
+                  p.sexagemResult === 'FEMALE' ? 'bg-pink-500/15 text-pink-600 dark:text-pink-400' :
+                  p.sexagemResult === 'MALE'   ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400' :
+                  'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                }`}>
+                  {p.sexagemResult === 'FEMALE' ? '♀ Bezerra' :
+                   p.sexagemResult === 'MALE'   ? '♂ Bezerro' :
+                   'Prenha ✓'}
                 </span>
               </div>
             ))}
@@ -230,25 +273,32 @@ async function ProtocolDetail({
       {/* Timeline */}
       <SectionCard title="Calendário">
         <ol className="relative border-l border-border ml-2 space-y-4">
-          {[
-            { label: 'OPU',       date: fmt(protocol.opuDate),                          done: true },
-            { label: 'TE',        date: fmt(protocol.teDate),                            done: true },
-            { label: 'DG P30',    date: fmtRange(protocol.dgP30Start, protocol.dgP30End), done: completed.length + discontinued.length > 0 },
-            { label: 'DG P60',    date: fmtRange(protocol.dgP60Start, protocol.dgP60End), done: false },
-            { label: 'Parto',     date: fmt(protocol.prevParto),                         done: false },
-          ].map((step) => (
-            <li key={step.label} className="ml-4">
-              <span className={`absolute -left-1.5 mt-0.5 flex size-3 items-center justify-center rounded-full border ${
-                step.done ? 'bg-emerald-500 border-emerald-500' : 'bg-background border-border'
-              }`} />
-              <div className="flex items-baseline gap-2">
-                <span className={`text-sm font-medium ${step.done ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
-                  {step.label}
-                </span>
-                <span className="text-xs text-muted-foreground">{step.date}</span>
-              </div>
-            </li>
-          ))}
+          {([
+            protocol.startDate && { label: 'Dia 0 — Implante', date: fmt(protocol.startDate), done: pendingWithdrawal.length === 0 || !!protocol.startDate },
+            protocol.withdrawalDate && { label: 'Dia 8 — Hormônios', date: fmt(protocol.withdrawalDate), done: protocol.participations.some((p) => p.withdrawalDone) },
+            protocol.opuDate && { label: 'OPU', date: fmt(protocol.opuDate), done: true },
+            { label: 'TE', date: fmt(protocol.teDate), done: protocol.participations.some((p) => p.teResponse !== null) },
+            { label: 'DG P30', date: fmtRange(protocol.dgP30Start, protocol.dgP30End), done: waitingP60.length + completed.length > 0 },
+            { label: 'DG P60 / Sexagem', date: fmtRange(protocol.dgP60Start, protocol.dgP60End), done: completed.length > 0 },
+            { label: 'Parto previsto', date: fmt(protocol.prevParto), done: false },
+          ] as ({ label: string; date: string; done: boolean } | false | null | undefined)[])
+            .filter(Boolean)
+            .map((step) => {
+              const s = step as { label: string; date: string; done: boolean }
+              return (
+                <li key={s.label} className="ml-4">
+                  <span className={`absolute -left-1.5 mt-0.5 flex size-3 items-center justify-center rounded-full border ${
+                    s.done ? 'bg-emerald-500 border-emerald-500' : 'bg-background border-border'
+                  }`} />
+                  <div className="flex items-baseline gap-2">
+                    <span className={`text-sm font-medium ${s.done ? 'text-emerald-600 dark:text-emerald-400' : ''}`}>
+                      {s.label}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{s.date}</span>
+                  </div>
+                </li>
+              )
+            })}
         </ol>
       </SectionCard>
     </div>
