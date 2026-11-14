@@ -185,10 +185,10 @@ export async function getAnimalsByFarm(
   const skip  = (page - 1) * pageSize
 
   const { sortBy = 'tag' } = filters
-  const orderBy: Prisma.AnimalOrderByWithRelationInput[] =
-    sortBy === 'age_desc' ? [{ birthDate: { sort: 'desc', nulls: 'last' } }, { tag: 'asc' }] :
-    sortBy === 'age_asc'  ? [{ birthDate: { sort: 'asc',  nulls: 'last' } }, { tag: 'asc' }] :
-    /* tag */               [{ category: 'asc' }, { tag: 'asc' }]
+  const orderBy =
+    sortBy === 'age_desc' ? [{ birthDate: 'desc' as const }, { tag: 'asc' as const }] :
+    sortBy === 'age_asc'  ? [{ birthDate: 'asc'  as const }, { tag: 'asc' as const }] :
+    /* tag */               [{ category: 'asc' as const },   { tag: 'asc' as const }]
 
   const [animals, total] = await Promise.all([
     prisma.animal.findMany({
