@@ -3,6 +3,7 @@ import { auth }           from '@/lib/auth'
 import { getActiveFarm }  from '@/lib/active-farm'
 import { getFarmActivityReport } from '@/modules/reports/queries'
 import { PeriodNav }      from './period-nav'
+import { ReportsNav }     from '../reports-nav'
 import {
   Baby, Droplets, AlertTriangle, Heart,
   Stethoscope, Bell, FileText,
@@ -178,6 +179,8 @@ export default async function FarmActivityReportPage({
             {report.farmName} · Eventos da fazenda por período
           </p>
         </div>
+
+        <ReportsNav active="farm-activity" />
 
         {/* Navegação de período + botão imprimir */}
         <PeriodNav year={yearNum} month={monthNum} from={fromStr} to={toStr} />

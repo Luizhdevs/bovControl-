@@ -1,4 +1,5 @@
-import { prisma } from '@/lib/prisma'
+import { prisma }    from '@/lib/prisma'
+import { subDays }   from 'date-fns'
 
 // ─── Tipos de retorno ──────────────────────────────────────
 
@@ -343,4 +344,88 @@ export async function getFarmActivityReport(
     reproducao,
     alertas,
   }
+}
+
+// ─── Vacas vazias atrasadas (> 60 dias em aberto) ─────────
+//
+// Critérios:
+//   1. ACTIVE + COW + LACTATING
+//   2. lastCalvingDate <= hoje - 60 dias
+//   3. Nenhum PREGNANCY_CHECK CONFIRMED após o último parto
+
+export type EmptyCowLate = {
+  id:              string
+  tag:             string
+  name:            string | null
+  lotName:         string | null
+  lastCalvingDate: Date
+  daysEmpty:       number
+  lastInsemDate:   Date | null
+  lastInsemType:   string | null
+  insemCount:      number
+}
+
+export async function getEmptyCowsLate(farmId: string): Promise<EmptyCowLate[]> {
+  const today  = new Date()
+  const cutoff = subDays(today, 60)
+
+  const animals = await prisma.animal.findMany({
+    where: {
+      farmId,
+      status:          'ACTIVE',
+      category:        'COW',
+      milkStatus:      'LACTATING',
+      lastCalvingDate: { lte: cutoff },
+    },
+    select: {
+      id:              true,
+      tag:             true,
+      name:            true,
+      lastCalvingDate: true,
+      lot:             { select: { name: true } },
+      reproductions: {
+        where: {
+          type: { in: ['PREGNANCY_CHECK', 'INSEMINATION', 'NATURAL_MATING'] },
+          date: { gte: subDays(today, 730) },
+        },
+        orderBy: { date: 'desc' },
+        select:  { type: true, status: true, date: true },
+      },
+    },
+  })
+
+  return animals
+    .filter((a) => {
+      if (!a.lastCalvingDate) return false
+      // Exclui se há PREGNANCY_CHECK CONFIRMED após o último parto
+      return !a.reproductions.some(
+        (r) =>
+          r.type   === 'PREGNANCY_CHECK' &&
+          r.status === 'CONFIRMED' &&
+          r.date   >  a.lastCalvingDate!,
+      )
+    })
+    .map((a) => {
+      const calving  = a.lastCalvingDate!
+      const daysEmpty = Math.floor((today.getTime() - calving.getTime()) / 86_400_000)
+
+      const sinceCalving = a.reproductions.filter(
+        (r) =>
+          (r.type === 'INSEMINATION' || r.type === 'NATURAL_MATING') &&
+          r.date  > calving,
+      )
+
+      return {
+        id:              a.id,
+        tag:             a.tag,
+        name:            a.name,
+        lotName:         a.lot?.name ?? null,
+        lastCalvingDate: calving,
+        daysEmpty,
+        lastInsemDate:   sinceCalving[0]?.date ?? null,
+        lastInsemType:   sinceCalving[0]?.type ?? null,
+        insemCount:      sinceCalving.length,
+      }
+    })
+    .sort((a, b) => b.daysEmpty - a.daysEmpty)
 }
