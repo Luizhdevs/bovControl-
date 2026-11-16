@@ -48,6 +48,47 @@ export async function resolveAlert(
   }
 }
 
+// ─── Dispensar alerta sem registrar vacina ───────────────
+
+export async function dismissVaccineAlert(
+  alertId: string,
+  farmId:  string,
+): Promise<ActionResult<void>> {
+  try {
+    const session = await auth()
+    if (!session) return { success: false, error: 'Não autorizado' }
+
+    await requireFarmAccess(session.user.id, farmId, 'WORKER')
+
+    const alert = await prisma.alert.findFirst({
+      where: { id: alertId, farmId, status: 'PENDING' },
+    })
+    if (!alert) return { success: false, error: 'Alerta não encontrado ou já processado.' }
+
+    await prisma.alert.update({
+      where: { id: alertId },
+      data:  { status: 'DISMISSED', resolvedAt: new Date() },
+    })
+
+    auditUpdate({
+      farmId,
+      userId:   session.user.id,
+      entity:   'Alert',
+      entityId: alertId,
+      before:   { status: alert.status },
+      after:    { status: 'DISMISSED' },
+      metadata: { source: 'web', reason: 'dismissed_without_vaccine' },
+    })
+
+    revalidatePath('/')
+    revalidatePath('/alerts')
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[dismissVaccineAlert]', error)
+    return { success: false, error: 'Erro ao dispensar alerta.' }
+  }
+}
+
 // ─── Registrar vacina pré-parto e resolver alerta ─────────
 
 export async function applyVaccineAndResolveAlert(

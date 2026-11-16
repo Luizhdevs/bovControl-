@@ -463,7 +463,10 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
   })
 
   const vaccines = pendingAlerts
-    .filter((al) => al.title.startsWith('Vacinas pré-parto'))
+    .filter((al) =>
+      al.title.startsWith('Vacinas pré-parto') &&
+      (!al.dueDate || al.dueDate.getTime() <= Date.now()),
+    )
     .map(toItem)
     .sort((a, b) => (a.days ?? Infinity) - (b.days ?? Infinity))
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Syringe, CheckCircle2 }   from 'lucide-react'
+import { Syringe, CheckCircle2, X } from 'lucide-react'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from '@/components/ui/sheet'
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input }  from '@/components/ui/input'
 import { Label }  from '@/components/ui/label'
 import { useToast } from '@/hooks/use-toast'
-import { applyVaccineAndResolveAlert } from '@/modules/alerts/actions'
+import { applyVaccineAndResolveAlert, dismissVaccineAlert } from '@/modules/alerts/actions'
 
 interface ManagementVaccineSheetProps {
   open:        boolean
@@ -27,14 +27,27 @@ export function ManagementVaccineSheet({
 }: ManagementVaccineSheetProps) {
   const { toast }             = useToast()
   const [isPending, start]    = useTransition()
-  const [done, setDone]       = useState(false)
-  const todayStr              = new Date().toISOString().split('T')[0]!
+  const [done, setDone]           = useState(false)
+  const [dismissed, setDismissed] = useState(false)
+  const todayStr                  = new Date().toISOString().split('T')[0]!
   const [appliedAt, setAppliedAt] = useState(todayStr)
 
   function handleClose() {
     setDone(false)
+    setDismissed(false)
     setAppliedAt(todayStr)
     onClose()
+  }
+
+  function handleDismiss() {
+    start(async () => {
+      const result = await dismissVaccineAlert(alertId, farmId)
+      if (!result.success) {
+        toast({ title: 'Erro', description: result.error, variant: 'destructive' })
+        return
+      }
+      setDismissed(true)
+    })
   }
 
   function handleApply() {
@@ -73,6 +86,16 @@ export function ManagementVaccineSheet({
             </p>
             <Button className="mt-2 w-full" onClick={handleClose}>Fechar</Button>
           </div>
+        ) : dismissed ? (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <X className="size-12 text-muted-foreground" />
+            <p className="font-semibold text-foreground">Alerta dispensado</p>
+            <p className="text-xs text-muted-foreground">
+              O aviso foi removido do manejo de hoje.<br />
+              Nenhuma vacina foi registrada.
+            </p>
+            <Button className="mt-2 w-full" onClick={handleClose}>Fechar</Button>
+          </div>
         ) : (
           <div className="space-y-5">
             <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3 text-sm text-emerald-700 dark:text-emerald-400">
@@ -97,6 +120,16 @@ export function ManagementVaccineSheet({
             >
               <Syringe className="size-4" />
               {isPending ? 'Registrando…' : 'Confirmar aplicação'}
+            </Button>
+
+            <Button
+              variant="outline"
+              className="w-full gap-2 text-muted-foreground"
+              onClick={handleDismiss}
+              disabled={isPending}
+            >
+              <X className="size-4" />
+              Dispensar — sem vacina hoje
             </Button>
 
             <Button

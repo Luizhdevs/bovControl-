@@ -1,5 +1,5 @@
 import { prisma }    from '@/lib/prisma'
-import { subDays }  from 'date-fns'
+import { subDays, addDays }  from 'date-fns'
 import { getPregnantAnimals } from '@/modules/reproduction/queries'
 import type { AlertWithAnimal, AlertFilters } from './types'
 
@@ -80,17 +80,22 @@ export async function syncPreCalvingVaccineAlerts(farmId: string): Promise<void>
     ]
 
     for (const w of windows) {
-      // Ignora janelas que passaram há mais de 10 dias (já sem utilidade)
       const daysUntil = Math.ceil((w.dueDate.getTime() - today.getTime()) / 86_400_000)
-      if (daysUntil < -10) continue
+      // Só cria quando estiver dentro da janela: até 3 dias antes ou até 10 dias depois
+      if (daysUntil > 3)   continue  // muito cedo — dueDate ainda não chegou
+      if (daysUntil < -10) continue  // passou há mais de 10 dias — sem utilidade
 
+      // Escopa por dueDate (±20 dias) para não recriar alertas do mesmo ciclo de gestação
       const existing = await prisma.alert.findFirst({
         where: {
           farmId,
           animalId: animal.animalId,
           type:     'VACCINATION',
           title:    w.title,
-          status:   { not: 'DISMISSED' },
+          dueDate:  {
+            gte: subDays(w.dueDate, 20),
+            lte: addDays(w.dueDate, 20),
+          },
         },
       })
 
