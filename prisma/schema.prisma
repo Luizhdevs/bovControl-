@@ -206,6 +206,7 @@ model Animal {
   feedConsumptions    AnimalFeedConsumption[]
   veterinarySnapshots VeterinaryAnimalSnapshot[]
   teParticipations    TEParticipation[]
+  iatfParticipations  IATFParticipation[]
 
   @@unique([farmId, tag])
   @@index([farmId, status])
@@ -323,8 +324,9 @@ model Reproduction {
   notes         String?
   createdAt     DateTime           @default(now())
 
-  animal          Animal           @relation(fields: [animalId], references: [id], onDelete: Cascade)
-  teParticipation TEParticipation?
+  animal           Animal            @relation(fields: [animalId], references: [id], onDelete: Cascade)
+  teParticipation  TEParticipation?
+  iatfParticipation IATFParticipation?
 
   @@index([animalId, type, date])
   @@map("reproductions")
@@ -398,6 +400,66 @@ model TEParticipation {
   @@index([protocolId, status])
   @@index([animalId, status])
   @@map("te_participations")
+}
+
+// ─── PROTOCOLOS IATF ───────────────────────────────────────
+// Inseminação Artificial em Tempo Fixo.
+// Fluxo: D0 (implante P4) → D8 (hormônios de cio) → D10 (IA) → DG (~30d)
+// Completamente separado de TEProtocol — não misturar.
+
+model IATFProtocol {
+  id     String           @id @default(cuid())
+  farmId String
+  name   String
+  status TEProtocolStatus @default(ACTIVE)
+
+  d0Date  DateTime  @db.Date @map("d0_date")   // Dia 0 — implante P4
+  d8Date  DateTime? @db.Date @map("d8_date")   // Dia 8 — hormônios de cio (opcional: d0 + 8)
+  d10Date DateTime  @db.Date @map("d10_date")  // Dia 10 — inseminação
+
+  touro String? // sêmen / identificação do touro
+
+  dgStart   DateTime? @db.Date @map("dg_start")  // início da janela DG
+  dgEnd     DateTime? @db.Date @map("dg_end")    // fim da janela DG
+  prevParto DateTime? @db.Date @map("prev_parto") // parto previsto (d10 + 280d)
+
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  farm           Farm                @relation(fields: [farmId], references: [id])
+  participations IATFParticipation[]
+
+  @@index([farmId, status])
+  @@map("iatf_protocols")
+}
+
+model IATFParticipation {
+  id             String                @id @default(cuid())
+  protocolId     String
+  animalId       String
+  status         TEParticipationStatus @default(ACTIVE)
+  reproductionId String?               @unique
+
+  touro String? // sêmen específico para este animal (override do protocolo)
+
+  d8Done Boolean @default(false) @map("d8_done") // hormônios D8 aplicados
+  iaDone Boolean @default(false) @map("ia_done") // IA realizada no D10
+
+  discontinuedAt     DateTime? @map("discontinued_at")
+  discontinuedReason String?   @map("discontinued_reason")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  protocol     IATFProtocol  @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+  animal       Animal        @relation(fields: [animalId], references: [id])
+  reproduction Reproduction? @relation(fields: [reproductionId], references: [id])
+
+  @@unique([animalId, protocolId])
+  @@index([protocolId, status])
+  @@index([animalId, status])
+  @@map("iatf_participations")
 }
 
 // ─── PRODUÇÃO DE LEITE ─────────────────────────────────────

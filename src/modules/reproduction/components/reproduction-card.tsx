@@ -101,18 +101,27 @@ export function ReproductionCard({
           {format(new Date(record.date), "dd 'de' MMM 'de' yyyy", { locale: ptBR })}
         </div>
 
-        {/* Para inseminação TE: exibir pai e mãe do embrião */}
+        {/* Para inseminação TE ou IATF: exibir detalhes do protocolo */}
         {record.type === 'INSEMINATION' && record.notes && (() => {
           try {
             const data = JSON.parse(record.notes)
             if (data?.tipo === 'TE') {
               return (
                 <div className="text-xs text-muted-foreground space-y-0.5 mt-0.5">
-                  {data.touro   && <div>Pai: <span className="text-foreground">{data.touro}</span></div>}
-                  {data.doadora && <div>Mãe: <span className="text-foreground">{data.doadora}</span></div>}
+                  <div><span className="text-[10px] font-semibold uppercase tracking-wide text-violet-500 mr-1">TE</span></div>
+                  {data.touro      && <div>Pai: <span className="text-foreground">{data.touro}</span></div>}
+                  {data.doadora    && <div>Mãe: <span className="text-foreground">{data.doadora}</span></div>}
                   {data.ovaQuality && <div>Qualidade: <span className="text-foreground">{data.ovaQuality}</span></div>}
-                  {data.sexo    && <div>Sexo emb.: <span className="text-foreground">{data.sexo}</span></div>}
+                  {data.sexo       && <div>Sexo emb.: <span className="text-foreground">{data.sexo}</span></div>}
                   {data.laboratorio && <div>Lab.: <span className="text-foreground">{data.laboratorio}</span></div>}
+                </div>
+              )
+            }
+            if (data?.tipo === 'IATF') {
+              return (
+                <div className="text-xs text-muted-foreground space-y-0.5 mt-0.5">
+                  <div><span className="text-[10px] font-semibold uppercase tracking-wide text-primary mr-1">IATF</span></div>
+                  {data.touro && <div>Touro / Sêmen: <span className="text-foreground">{data.touro}</span></div>}
                 </div>
               )
             }
@@ -120,7 +129,7 @@ export function ReproductionCard({
           return null
         })()}
 
-        {/* Para inseminação regular: exibir boi */}
+        {/* Para inseminação regular (sem JSON): exibir boi */}
         {record.type !== 'INSEMINATION' || !record.notes?.startsWith('{') ? (
           record.bullName && (
             <div className="text-xs text-muted-foreground">
