@@ -339,6 +339,29 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
       }
     }
 
+    // ── Secagem por 7 meses ────────────────────────────────
+    // Detecta vaca leiteira em lactação há 7+ meses sem depender de snapshot vet
+    if (a.milkStatus === 'LACTATING' && a.lastCalvingDate) {
+      const daysPostPartum = Math.floor((today.getTime() - new Date(a.lastCalvingDate).getTime()) / DAY_MS)
+      if (daysPostPartum >= 210) {
+        const alreadyInDryOff = dryOff.some(d => d.animalId === a.id)
+        if (!alreadyInDryOff) {
+          const it = item(
+            `${a.id}-dry-7m`,
+            base,
+            origin,
+            'DRY_OFF_DUE',
+            'HIGH',
+            'Secagem recomendada — 7 meses',
+            `${daysPostPartum} dias de lactação · bezerro com ${daysPostPartum} dias`,
+            daysPostPartum,
+          )
+          dryOff.push(it)
+          critical.push(it)
+        }
+      }
+    }
+
     // ── Bezerros incompletos ────────────────────────────────
     if (a.category === 'CALF') {
       const missing: string[] = []
