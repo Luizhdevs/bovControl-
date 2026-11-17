@@ -280,12 +280,43 @@ export function ReproductionForm({
       {isDGConfirmado && (
         <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-4">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Dados do veterinário (opcional)
+            Informações do veterinário
           </p>
 
-          {/* Data da cobertura */}
+          {/* Dias restantes para o parto — entrada principal */}
+          {!coberturaDate && (
+            <div className="space-y-2">
+              <Label>Dias restantes para o parto</Label>
+              <Controller
+                control={control}
+                name="gestacaoDias"
+                render={({ field }) => (
+                  <Input
+                    type="number"
+                    min={1}
+                    max={279}
+                    placeholder="Ex: 60"
+                    value={field.value !== null && field.value !== undefined ? String(280 - field.value) : ''}
+                    onChange={(e) => field.onChange(e.target.value ? 280 - Number(e.target.value) : null)}
+                    style={{ fontSize: '16px' }}
+                  />
+                )}
+              />
+              <p className="text-xs text-muted-foreground">
+                Informe quantos dias o vet disse que faltam para o parto.
+              </p>
+              {errors.gestacaoDias && (
+                <p className="text-xs text-destructive">{errors.gestacaoDias.message}</p>
+              )}
+            </div>
+          )}
+
+          {/* Data da cobertura — alternativa avançada */}
           <div className="space-y-2">
-            <Label>Data da cobertura / concepção</Label>
+            <Label>
+              Data da cobertura / concepção
+              <span className="text-muted-foreground font-normal ml-1">(opcional — alternativa acima)</span>
+            </Label>
             <Controller
               control={control}
               name="coberturaDate"
@@ -299,37 +330,9 @@ export function ReproductionForm({
               )}
             />
             <p className="text-xs text-muted-foreground">
-              Se o vet informar quando ocorreu a cobertura, use este campo.
+              Se souber a data exata da cobertura, use este campo (tem precedência sobre os dias).
             </p>
           </div>
-
-          {/* Dias de gestação — alternativa à data */}
-          {!coberturaDate && (
-            <div className="space-y-2">
-              <Label>
-                Dias de gestação
-                <span className="text-muted-foreground font-normal ml-1">(alternativa à data acima)</span>
-              </Label>
-              <Controller
-                control={control}
-                name="gestacaoDias"
-                render={({ field }) => (
-                  <Input
-                    type="number"
-                    min={1}
-                    max={279}
-                    placeholder="Ex: 60"
-                    value={field.value ?? ''}
-                    onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}
-                    style={{ fontSize: '16px' }}
-                  />
-                )}
-              />
-              {errors.gestacaoDias && (
-                <p className="text-xs text-destructive">{errors.gestacaoDias.message}</p>
-              )}
-            </div>
-          )}
 
           {/* Preview da previsão */}
           {previsaoCalculada && (

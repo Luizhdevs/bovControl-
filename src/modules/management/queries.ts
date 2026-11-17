@@ -125,6 +125,7 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
       where:   { farmId, status: 'PENDING' },
       select: {
         id:          true,
+        type:        true,
         title:       true,
         description: true,
         priority:    true,
@@ -444,6 +445,46 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
     }
   }
 
+  // ── Partos via alertas manuais (DG sem snapshot vet) ──────
+  // Alertas de tipo CALVING criados por registerReproduction entram na seção calving,
+  // não na lista genérica de alertas.
+  for (const al of pendingAlerts) {
+    if (al.type !== 'CALVING') continue
+    if (!al.animal) continue
+    if (calving.some(c => c.animalId === al.animal!.id)) continue   // já veio do snap
+    const a = animals.find(x => x.id === al.animal!.id)
+    if (!a) continue
+    const photoUrl2 = a.photos[0]?.url ?? null
+    const lotName2  = a.lot?.name ?? null
+    const base2     = { id: a.id, tag: a.tag, name: a.name, externalCode: a.externalCode, category: a.category, lotName: lotName2, photoUrl: photoUrl2, milkStatus: a.milkStatus }
+    const origin2   = originOf(a.externalCode, snapMap.has(a.id))
+    const daysUntil = al.dueDate ? Math.ceil((al.dueDate.getTime() - today.getTime()) / DAY_MS) : null
+    if (daysUntil !== null && daysUntil < 0) {
+      const abs = Math.abs(daysUntil)
+      const it = item(`${a.id}-calving-alert-ov`, base2, origin2,
+        'CALVING_OVERDUE', 'HIGH',
+        'Parto vencido',
+        `Previsto há ${abs} dia${abs !== 1 ? 's' : ''}`,
+        daysUntil, al.dueDate ?? null,
+      )
+      calving.push(it)
+      critical.push(it)
+    } else if (daysUntil !== null) {
+      const isUrgent = daysUntil <= 7
+      const title = daysUntil === 0 ? 'Parto previsto para hoje'
+        : `Parto em ${daysUntil} dia${daysUntil !== 1 ? 's' : ''}`
+      const reason = al.dueDate
+        ? `Previsto para ${al.dueDate.toLocaleDateString('pt-BR')}`
+        : 'Prenhez confirmada manualmente'
+      const it = item(`${a.id}-calving-alert`, base2, origin2,
+        'CALVING_SOON', isUrgent ? 'HIGH' : 'MEDIUM',
+        title, reason, daysUntil, al.dueDate ?? null,
+      )
+      calving.push(it)
+      if (isUrgent) critical.push(it)
+    }
+  }
+
   // 5. Ordena cada seção por data mais próxima (days crescente, nulls por último)
   const byDays = (a: ManagementActionItem, b: ManagementActionItem) =>
     (a.days ?? Infinity) - (b.days ?? Infinity)
@@ -486,7 +527,7 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
     .sort((a, b) => (a.days ?? Infinity) - (b.days ?? Infinity))
 
   const alerts = pendingAlerts
-    .filter((al) => !al.title.startsWith('Vacinas pré-parto'))
+    .filter((al) => al.type !== 'CALVING' && !al.title.startsWith('Vacinas pré-parto'))
     .map(toItem)
 
   // 7. Resumo
