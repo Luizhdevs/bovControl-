@@ -304,14 +304,6 @@ export async function getTodayManagementOverview(farmId: string): Promise<Manage
           'Vazia há mais de 45 dias sem inseminação',
         ))
       }
-      if (reportGroup === 'INSEMINATED_OVER_30D' && !calvedInLast90d) {
-        reproduction.push(item(`${a.id}-preg-check`, base, origin,
-          'PREGNANCY_CHECK_DUE', 'MEDIUM',
-          'Diagnóstico de gestação pendente',
-          'Mais de 30 dias desde a última inseminação',
-        ))
-      }
-
       // ── Saúde ──────────────────────────────────────────────
       if (mastitisDays && mastitisDays > 0) {
         const it = item(`${a.id}-mastitis`, base, origin,

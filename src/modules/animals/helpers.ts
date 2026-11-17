@@ -153,14 +153,6 @@ export function getNextActions(
       })
     }
 
-    if (reportGroup === 'INSEMINATED_OVER_30D') {
-      actions.push({
-        title:    'Diagnóstico de gestação',
-        reason:   'Mais de 30 dias desde a última inseminação',
-        priority: 'MEDIUM',
-      })
-    }
-
     if (mastitisDays && mastitisDays > 0) {
       actions.push({
         title:    'Acompanhar mamite',
