@@ -318,6 +318,67 @@ export async function updateIATFDGResult(
   }
 }
 
+// ─── Registrar aborto após prenhez confirmada ─────────────
+
+export async function recordIATFAbortion(
+  participationId: string,
+  observation?:    string,
+): Promise<ActionResult<void>> {
+  try {
+    const sf = await getSessionFarm()
+    if (!sf) return { success: false, error: 'Não autorizado' }
+    const { userId, farmId } = sf
+
+    await requireFarmAccess(userId, farmId, 'MANAGER')
+
+    const participation = await prisma.iATFParticipation.findFirst({
+      where: { id: participationId, status: 'COMPLETED', protocol: { farmId } },
+      select: { id: true, animalId: true, reproductionId: true },
+    })
+    if (!participation) return { success: false, error: 'Participação não encontrada ou não está prenhe' }
+
+    const reason = `Aborto${observation ? ': ' + observation : ''}`
+
+    await prisma.$transaction(async (tx) => {
+      await tx.iATFParticipation.update({
+        where: { id: participationId },
+        data: {
+          status:             'DISCONTINUED',
+          discontinuedAt:     new Date(),
+          discontinuedReason: reason,
+        },
+      })
+
+      await tx.reproduction.create({
+        data: {
+          animalId: participation.animalId,
+          type:     'PREGNANCY_CHECK',
+          status:   'FAILED',
+          date:     new Date(),
+          result:   reason,
+          notes:    JSON.stringify({ tipo: 'IATF_ABORTO', participationId }),
+        },
+      })
+    })
+
+    auditUpdate({
+      farmId, userId,
+      entity:   'IATFParticipation',
+      entityId: participationId,
+      before:   { status: 'COMPLETED' },
+      after:    { status: 'DISCONTINUED', reason },
+      metadata: { source: 'web', event: 'IATF_ABORTION' },
+    })
+
+    revalidatePath('/reproduction/protocolos/iatf')
+    revalidatePath(`/reproduction/${participation.animalId}`)
+    return { success: true, data: undefined }
+  } catch (error) {
+    console.error('[recordIATFAbortion]', error)
+    return { success: false, error: 'Erro ao registrar aborto. Tente novamente.' }
+  }
+}
+
 // ─── Descontinuar animal do protocolo ─────────────────────
 
 export async function discontinueIATFAnimal(

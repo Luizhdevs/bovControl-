@@ -35,7 +35,7 @@ export function NewIATFForm({ animals }: Props) {
   const [dgEnd,      setDgEnd]      = useState('')
   const [prevParto,  setPrevParto]  = useState('')
 
-  // Auto-calcular D8 e D10 a partir de D0
+  // Auto-calcular D8, D10 e DG (D10 + 30 dias) a partir de D0
   function handleD0Change(val: string) {
     setD0Date(val)
     if (!val) return
@@ -43,8 +43,20 @@ export function NewIATFForm({ animals }: Props) {
     if (isNaN(d0.getTime())) return
     const d8  = new Date(d0); d8.setDate(d8.getDate() + 8)
     const d10 = new Date(d0); d10.setDate(d10.getDate() + 10)
+    const dg  = new Date(d10); dg.setDate(dg.getDate() + 30)
     setD8Date(d8.toISOString().split('T')[0]!)
     setD10Date(d10.toISOString().split('T')[0]!)
+    setDgStart(dg.toISOString().split('T')[0]!)
+  }
+
+  // Re-calcular DG quando D10 muda manualmente
+  function handleD10Change(val: string) {
+    setD10Date(val)
+    if (!val) return
+    const d10 = new Date(val + 'T00:00:00')
+    if (isNaN(d10.getTime())) return
+    const dg = new Date(d10); dg.setDate(dg.getDate() + 30)
+    setDgStart(dg.toISOString().split('T')[0]!)
   }
 
   // Animais selecionados
@@ -140,7 +152,7 @@ export function NewIATFForm({ animals }: Props) {
                 type="date"
                 required
                 value={d10Date}
-                onChange={(e) => setD10Date(e.target.value)}
+                onChange={(e) => handleD10Change(e.target.value)}
                 className="mt-1"
               />
             </div>
@@ -164,7 +176,7 @@ export function NewIATFForm({ animals }: Props) {
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs text-muted-foreground">DG início</Label>
+              <Label className="text-xs text-muted-foreground">DG início (D10 + 30 dias)</Label>
               <Input type="date" value={dgStart} onChange={(e) => setDgStart(e.target.value)} className="mt-1" />
             </div>
             <div>

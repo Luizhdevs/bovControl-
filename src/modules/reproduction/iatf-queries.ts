@@ -12,7 +12,8 @@ export type IATFCurrentStage =
   | 'PENDING_IA'    // D8 feito, aguardando IA no D10
   | 'WAITING_DG'    // IA feita, aguardando diagnóstico de gestação
   | 'PRENHA'        // DG confirmado — participation COMPLETED
-  | 'VAZIA'         // DG negativo — participation DISCONTINUED, reason 'DG negativo'
+  | 'VAZIA'         // DG negativo — participation DISCONTINUED, reason 'DG negativo...'
+  | 'ABORTED'       // aborto após prenhez confirmada — DISCONTINUED, reason 'Aborto...'
   | 'DISCONTINUED'  // retirada por outro motivo
 
 export interface IATFProtocolHeader {
@@ -27,7 +28,8 @@ export interface IATFProtocolHeader {
   dgEnd:     Date | null
   prevParto: Date | null
   totalAnimals: number
-  confirmed:    number   // PRENHA
+  confirmed:    number   // PRENHA (ativas, sem aborto)
+  aborted:      number   // aborto após prenhez confirmada
   vacias:       number   // VAZIA
   discontinued: number   // dropped for other reason
   pending:      number   // ACTIVE (not yet PRENHA/VAZIA/DISCONTINUED)
@@ -65,7 +67,9 @@ function computeStage(
 ): IATFCurrentStage {
   if (partStatus === 'COMPLETED')   return 'PRENHA'
   if (partStatus === 'DISCONTINUED') {
-    return discontinuedReason?.startsWith('DG negativo') ? 'VAZIA' : 'DISCONTINUED'
+    if (discontinuedReason?.startsWith('DG negativo')) return 'VAZIA'
+    if (discontinuedReason?.startsWith('Aborto'))      return 'ABORTED'
+    return 'DISCONTINUED'
   }
   // ACTIVE
   if (!d8Done) return 'PENDING_D8'
@@ -85,11 +89,16 @@ export async function getIATFProtocolList(farmId: string): Promise<IATFProtocolH
   return protocols.map((p) => {
     const total        = p.participations.length
     const confirmed    = p.participations.filter((x) => x.status === 'COMPLETED').length
+    const aborted      = p.participations.filter((x) =>
+      x.status === 'DISCONTINUED' && x.discontinuedReason?.startsWith('Aborto'),
+    ).length
     const vacias       = p.participations.filter((x) =>
       x.status === 'DISCONTINUED' && x.discontinuedReason?.startsWith('DG negativo'),
     ).length
     const discontinued = p.participations.filter((x) =>
-      x.status === 'DISCONTINUED' && !x.discontinuedReason?.startsWith('DG negativo'),
+      x.status === 'DISCONTINUED' &&
+      !x.discontinuedReason?.startsWith('DG negativo') &&
+      !x.discontinuedReason?.startsWith('Aborto'),
     ).length
     const pending      = p.participations.filter((x) => x.status === 'ACTIVE').length
 
@@ -106,6 +115,7 @@ export async function getIATFProtocolList(farmId: string): Promise<IATFProtocolH
       prevParto: p.prevParto,
       totalAnimals: total,
       confirmed,
+      aborted,
       vacias,
       discontinued,
       pending,
@@ -156,11 +166,16 @@ export async function getIATFProtocolDetail(
 
   const total        = participations.length
   const confirmed    = participations.filter((x) => x.participationStatus === 'COMPLETED').length
+  const aborted      = participations.filter((x) =>
+    x.participationStatus === 'DISCONTINUED' && x.discontinuedReason?.startsWith('Aborto'),
+  ).length
   const vacias       = participations.filter((x) =>
     x.participationStatus === 'DISCONTINUED' && x.discontinuedReason?.startsWith('DG negativo'),
   ).length
   const discontinued = participations.filter((x) =>
-    x.participationStatus === 'DISCONTINUED' && !x.discontinuedReason?.startsWith('DG negativo'),
+    x.participationStatus === 'DISCONTINUED' &&
+    !x.discontinuedReason?.startsWith('DG negativo') &&
+    !x.discontinuedReason?.startsWith('Aborto'),
   ).length
   const pending      = participations.filter((x) => x.participationStatus === 'ACTIVE').length
 
@@ -177,6 +192,7 @@ export async function getIATFProtocolDetail(
     prevParto: protocol.prevParto,
     totalAnimals: total,
     confirmed,
+    aborted,
     vacias,
     discontinued,
     pending,

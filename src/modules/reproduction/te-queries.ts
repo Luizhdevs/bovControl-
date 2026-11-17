@@ -14,6 +14,7 @@ export type TECurrentStage =
   | 'WAITING_P30'         // TE realizada, aguardando DG P30
   | 'WAITING_P60'         // DG P30 confirmado, aguardando sexagem/DG P60
   | 'PRENHA'              // DG P60 confirmado (com sexagem)
+  | 'ABORTED'             // aborto após prenhez confirmada — DISCONTINUED, reason 'Aborto...'
   | 'DISCONTINUED'        // retirada do protocolo em qualquer etapa
 
 export interface TEProtocolHeader {
@@ -34,6 +35,7 @@ export interface TEProtocolHeader {
   prevParto:   Date | null
   totalAnimals:  number
   confirmed:     number
+  aborted:       number
   discontinued:  number
   pending:       number
 }
@@ -74,6 +76,7 @@ export async function getTEProtocolList(farmId: string): Promise<TEProtocolHeade
   })
 
   return protocols.map((p) => {
+    // te-queries lista só conta status, sem discontinuedReason — busca simples
     const total        = p.participations.length
     const confirmed    = p.participations.filter((x) => x.status === 'COMPLETED').length
     const discontinued = p.participations.filter((x) => x.status === 'DISCONTINUED').length
@@ -97,6 +100,7 @@ export async function getTEProtocolList(farmId: string): Promise<TEProtocolHeade
       prevParto:      p.prevParto,
       totalAnimals:   total,
       confirmed,
+      aborted:        0, // calculado no detail — list não carrega discontinuedReason
       discontinued,
       pending,
     }
@@ -128,6 +132,7 @@ export async function getTEProtocolDetail(
 
     // Cálculo da etapa atual
     const currentDGStage: TECurrentStage =
+      partStatus === 'DISCONTINUED' && p.discontinuedReason?.startsWith('Aborto') ? 'ABORTED' :
       partStatus === 'DISCONTINUED'           ? 'DISCONTINUED' :
       partStatus === 'COMPLETED'              ? 'PRENHA' :
       p.teResponse === 'NOT_RESPONDED'        ? 'TE_NO_RESPONSE' :
@@ -160,7 +165,10 @@ export async function getTEProtocolDetail(
 
   const total        = participations.length
   const confirmed    = participations.filter((x) => x.participationStatus === 'COMPLETED').length
-  const discontinued = participations.filter((x) => x.participationStatus === 'DISCONTINUED').length
+  const aborted      = participations.filter((x) => x.currentDGStage === 'ABORTED').length
+  const discontinued = participations.filter((x) =>
+    x.participationStatus === 'DISCONTINUED' && !x.discontinuedReason?.startsWith('Aborto'),
+  ).length
   const pending      = participations.filter((x) => x.participationStatus === 'ACTIVE').length
 
   return {
@@ -181,6 +189,7 @@ export async function getTEProtocolDetail(
     prevParto:      protocol.prevParto,
     totalAnimals:   total,
     confirmed,
+    aborted,
     discontinued,
     pending,
     participations,
@@ -226,6 +235,7 @@ export async function getAnimalTEParticipations(
     const dgStatus   = (p.reproduction?.status ?? null) as 'PENDING' | 'CONFIRMED' | 'FAILED' | null
 
     const currentDGStage: TECurrentStage =
+      partStatus === 'DISCONTINUED' && p.discontinuedReason?.startsWith('Aborto') ? 'ABORTED' :
       partStatus === 'DISCONTINUED'           ? 'DISCONTINUED' :
       partStatus === 'COMPLETED'              ? 'PRENHA' :
       p.teResponse === 'NOT_RESPONDED'        ? 'TE_NO_RESPONSE' :

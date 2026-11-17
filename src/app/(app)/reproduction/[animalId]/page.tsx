@@ -32,6 +32,7 @@ const TE_STAGE_CONFIG: Record<TECurrentStage, { label: string; className: string
   WAITING_P30:        { label: 'Aguardando DG P30',   className: 'text-violet-400 bg-violet-400/10 border-violet-400/20' },
   WAITING_P60:        { label: 'Aguardando DG P60',   className: 'text-violet-400 bg-violet-400/10 border-violet-400/20' },
   PRENHA:             { label: 'Prenha ✓',            className: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20' },
+  ABORTED:            { label: 'Aborto',              className: 'text-orange-400 bg-orange-400/10 border-orange-400/20' },
   DISCONTINUED:       { label: 'Descontinuada',       className: 'text-muted-foreground bg-muted border-border' },
 }
 

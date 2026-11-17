@@ -7,6 +7,7 @@ import {
   recordIATFIA,
   updateIATFDGResult,
   discontinueIATFAnimal,
+  recordIATFAbortion,
 } from '@/modules/reproduction/iatf-actions'
 import type { IATFCurrentStage } from '@/modules/reproduction/iatf-queries'
 
@@ -14,12 +15,13 @@ import type { IATFCurrentStage } from '@/modules/reproduction/iatf-queries'
 
 export function IATFStatusBadge({ stage }: { stage: IATFCurrentStage }) {
   const configs: Record<IATFCurrentStage, { label: string; cls: string }> = {
-    PENDING_D8:  { label: 'Aguardando D8',   cls: 'bg-sky-500/15 text-sky-600 dark:text-sky-400' },
-    PENDING_IA:  { label: 'D8 ✓ — Aguarda IA', cls: 'bg-blue-500/15 text-blue-600 dark:text-blue-400' },
-    WAITING_DG:  { label: 'Aguardando DG',   cls: 'bg-amber-500/15 text-amber-600 dark:text-amber-400' },
-    PRENHA:      { label: 'Prenha ✓',         cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' },
-    VAZIA:       { label: 'Vazia',             cls: 'bg-red-500/15 text-red-500' },
-    DISCONTINUED:{ label: 'Descontinuada',    cls: 'bg-zinc-500/15 text-zinc-500' },
+    PENDING_D8:  { label: 'Aguardando D8',      cls: 'bg-sky-500/15 text-sky-600 dark:text-sky-400' },
+    PENDING_IA:  { label: 'D8 ✓ — Aguarda IA',  cls: 'bg-blue-500/15 text-blue-600 dark:text-blue-400' },
+    WAITING_DG:  { label: 'Aguardando DG',       cls: 'bg-amber-500/15 text-amber-600 dark:text-amber-400' },
+    PRENHA:      { label: 'Prenha ✓',            cls: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' },
+    VAZIA:       { label: 'Vazia',               cls: 'bg-red-500/15 text-red-500' },
+    ABORTED:     { label: 'Aborto',              cls: 'bg-orange-500/15 text-orange-600 dark:text-orange-400' },
+    DISCONTINUED:{ label: 'Descontinuada',       cls: 'bg-zinc-500/15 text-zinc-500' },
   }
   const { label, cls } = configs[stage]
   return (
@@ -37,6 +39,7 @@ type ActionMode =
   | 'ia_confirm'
   | 'dg'
   | 'discontinue'
+  | 'abort_confirm'
 
 interface Props {
   participationId: string
@@ -49,8 +52,8 @@ export function IATFStepButton({ participationId, currentStage }: Props) {
   const [pending, startTransition] = useTransition()
   const [error, setError]          = useState<string | null>(null)
 
-  const finalStages: IATFCurrentStage[] = ['PRENHA', 'VAZIA', 'DISCONTINUED']
-  if (finalStages.includes(currentStage)) {
+  const terminalStages: IATFCurrentStage[] = ['VAZIA', 'ABORTED', 'DISCONTINUED']
+  if (terminalStages.includes(currentStage)) {
     return <IATFStatusBadge stage={currentStage} />
   }
 
@@ -61,6 +64,42 @@ export function IATFStepButton({ participationId, currentStage }: Props) {
       if (r.success) { setMode('idle'); setReason('') }
       else           { setError(r.error ?? 'Erro') }
     })
+  }
+
+  // ── PRENHA: apenas aborto disponível ──────────────────────
+  if (currentStage === 'PRENHA') {
+    if (mode === 'abort_confirm') {
+      return (
+        <div className="flex flex-col gap-1 items-end">
+          <div className="text-xs text-muted-foreground mb-0.5 text-right">Confirmar aborto?</div>
+          <div className="flex gap-1.5">
+            <button
+              disabled={pending}
+              onClick={() => run(() => recordIATFAbortion(participationId, reason.trim() || undefined))}
+              className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-60 transition-colors"
+            >
+              {pending ? <Loader2 className="size-3 animate-spin" /> : <XCircle className="size-3" />}
+              Confirmar
+            </button>
+            <button disabled={pending} onClick={() => { setMode('idle'); setReason('') }}
+              className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground hover:bg-muted/80">✕</button>
+          </div>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+        </div>
+      )
+    }
+    return (
+      <div className="flex gap-1.5 items-center">
+        <IATFStatusBadge stage="PRENHA" />
+        <button
+          onClick={() => setMode('abort_confirm')}
+          className="text-xs px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 hover:bg-orange-500/20 transition-colors"
+          title="Registrar aborto"
+        >
+          Aborto
+        </button>
+      </div>
+    )
   }
 
   // ── D8: hormônios de cio ────────────────────────────────

@@ -7,6 +7,7 @@ import {
   recordTEResponse,
   updateDGResult,
   discontinueAnimal,
+  recordTEAbortion,
 } from '@/modules/reproduction/te-actions'
 import type { TECurrentStage } from '@/modules/reproduction/te-queries'
 
@@ -17,6 +18,13 @@ export function StatusBadge({ stage, sexagemResult }: { stage: TECurrentStage; s
     return (
       <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-500/15 text-zinc-500 font-medium">
         Descontinuada
+      </span>
+    )
+  }
+  if (stage === 'ABORTED') {
+    return (
+      <span className="text-xs px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-600 dark:text-orange-400 font-medium">
+        Aborto
       </span>
     )
   }
@@ -76,6 +84,7 @@ type ActionMode =
   | 'dg_p30'
   | 'dg_p60'
   | 'discontinue'
+  | 'abort_confirm'
 
 interface DGButtonProps {
   participationId: string
@@ -89,8 +98,8 @@ export function DGUpdateButton({ participationId, currentDGStage, sexagemResult 
   const [pending, startTransition] = useTransition()
   const [error, setError]          = useState<string | null>(null)
 
-  const finalStages: TECurrentStage[] = ['PRENHA', 'DISCONTINUED']
-  if (finalStages.includes(currentDGStage)) {
+  const terminalStages: TECurrentStage[] = ['DISCONTINUED', 'ABORTED']
+  if (terminalStages.includes(currentDGStage)) {
     return <StatusBadge stage={currentDGStage} sexagemResult={sexagemResult} />
   }
 
@@ -101,6 +110,42 @@ export function DGUpdateButton({ participationId, currentDGStage, sexagemResult 
       if (r.success) { setMode('idle'); setReason('') }
       else           { setError(r.error ?? 'Erro') }
     })
+  }
+
+  // ── PRENHA: apenas aborto disponível ──────────────────────
+  if (currentDGStage === 'PRENHA') {
+    if (mode === 'abort_confirm') {
+      return (
+        <div className="flex flex-col gap-1 items-end">
+          <div className="text-xs text-muted-foreground mb-0.5 text-right">Confirmar aborto?</div>
+          <div className="flex gap-1.5">
+            <button
+              disabled={pending}
+              onClick={() => run(() => recordTEAbortion(participationId, reason.trim() || undefined))}
+              className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-60 transition-colors"
+            >
+              {pending ? <Loader2 className="size-3 animate-spin" /> : <XCircle className="size-3" />}
+              Confirmar
+            </button>
+            <button disabled={pending} onClick={() => { setMode('idle'); setReason('') }}
+              className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground hover:bg-muted/80">✕</button>
+          </div>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+        </div>
+      )
+    }
+    return (
+      <div className="flex gap-1.5 items-center">
+        <StatusBadge stage="PRENHA" sexagemResult={sexagemResult} />
+        <button
+          onClick={() => setMode('abort_confirm')}
+          className="text-xs px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 hover:bg-orange-500/20 transition-colors"
+          title="Registrar aborto"
+        >
+          Aborto
+        </button>
+      </div>
+    )
   }
 
   // ── Dia 8: hormônios ───────────────────────────────────────
