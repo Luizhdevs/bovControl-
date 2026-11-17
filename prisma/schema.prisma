@@ -97,6 +97,7 @@ model Farm {
   veterinaryReports   VeterinaryReport[]
   veterinarySnapshots VeterinaryAnimalSnapshot[]
   teProtocols         TEProtocol[]
+  iatfProtocols       IATFProtocol[]
 
   @@map("farms")
 }
