@@ -253,8 +253,14 @@ export async function getAnimalReproductionSummary(
 
   if (lastCheck) {
     if (lastCheck.status === 'CONFIRMED') {
-      pregnancyStatus     = 'pregnant'
-      expectedCalvingDate = lastCheck.nextCheckDate ?? addDays(lastCheck.date, 280)
+      // Verifica se houve um parto após este DG (vaca já pariu — não está mais prenhe)
+      const calvingAfterDG = events.find(
+        (e) => e.type === 'CALVING' && new Date(e.date) > new Date(lastCheck.date),
+      )
+      if (!calvingAfterDG) {
+        pregnancyStatus     = 'pregnant'
+        expectedCalvingDate = lastCheck.nextCheckDate ?? addDays(lastCheck.date, 280)
+      }
     } else if (lastCheck.status === 'FAILED') {
       pregnancyStatus = 'not_pregnant'
     }

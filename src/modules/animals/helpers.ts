@@ -109,7 +109,11 @@ export function getNextActions(
   if (vetSnapshot) {
     const { reportGroup, expectedCalvingDate, mastitisDays, ccsThousand, discardRecommendation } = vetSnapshot
 
-    if (reportGroup === 'CLOSE_UP') {
+    // Verifica se o animal já pariu recentemente (snapshot vet pode estar desatualizado)
+    const lastCalvMs = animal.lastCalvingDate ? new Date(animal.lastCalvingDate).getTime() : null
+    const calvedRecently = lastCalvMs !== null && lastCalvMs >= today.getTime() - 90 * DAY_MS
+
+    if (reportGroup === 'CLOSE_UP' && !calvedRecently) {
       actions.push({
         title:    'Acompanhar parto',
         reason:   'Vaca amojada – parto iminente',
@@ -117,21 +121,26 @@ export function getNextActions(
       })
     }
 
-    if (expectedCalvingDate) {
-      const exp = new Date(expectedCalvingDate)
-      const diffDays = Math.round((exp.getTime() - today.getTime()) / DAY_MS)
-      if (diffDays < 0) {
-        actions.push({
-          title:    'Verificar parto vencido',
-          reason:   `Parto previsto há ${Math.abs(diffDays)} dia${Math.abs(diffDays) !== 1 ? 's' : ''}`,
-          priority: 'HIGH',
-        })
-      } else if (diffDays <= 7) {
-        actions.push({
-          title:    `Parto em ${diffDays} dia${diffDays !== 1 ? 's' : ''}`,
-          reason:   `Previsto para ${exp.toLocaleDateString('pt-BR')}`,
-          priority: 'HIGH',
-        })
+    if (expectedCalvingDate && !calvedRecently) {
+      const exp      = new Date(expectedCalvingDate)
+      const expMs    = exp.getTime()
+      // Suprime se a vaca pariu depois da data prevista (- 90 dias de tolerância)
+      const calvedAfterExp = lastCalvMs !== null && lastCalvMs >= expMs - 90 * DAY_MS
+      if (!calvedAfterExp) {
+        const diffDays = Math.round((expMs - today.getTime()) / DAY_MS)
+        if (diffDays < 0) {
+          actions.push({
+            title:    'Verificar parto vencido',
+            reason:   `Parto previsto há ${Math.abs(diffDays)} dia${Math.abs(diffDays) !== 1 ? 's' : ''}`,
+            priority: 'HIGH',
+          })
+        } else if (diffDays <= 7) {
+          actions.push({
+            title:    `Parto em ${diffDays} dia${diffDays !== 1 ? 's' : ''}`,
+            reason:   `Previsto para ${exp.toLocaleDateString('pt-BR')}`,
+            priority: 'HIGH',
+          })
+        }
       }
     }
 
