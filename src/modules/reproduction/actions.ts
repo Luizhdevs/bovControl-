@@ -75,7 +75,9 @@ export async function registerReproduction(
     const guard = canRegisterReproduction(animal)
     if (!guard.allowed) return { success: false, error: guard.reason }
 
-    const { animalId, type, date, status, bullName, nextCheckDate, gestacaoDias, coberturaDate, result, notes } = parsed.data
+    const { animalId, type, date, bullName, nextCheckDate, gestacaoDias, coberturaDate, result, notes } = parsed.data
+    // Monta natural sempre foi confirmada (o usuário a registra depois que ocorreu)
+    const status = type === 'NATURAL_MATING' ? 'CONFIRMED' : parsed.data.status
 
     // Usa nextCheckDate informado ou calcula automaticamente (cobertura > dias > fallback)
     const resolvedNextCheckDate =
