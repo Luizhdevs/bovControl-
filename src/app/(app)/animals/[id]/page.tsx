@@ -162,6 +162,33 @@ export default async function AnimalDetailPage({
   const isNotPregnantByGroup = effectiveVetGroup != null && NON_PREGNANT_GROUPS.has(effectiveVetGroup)
   const calvingDays = (hasCalvedSinceExpected || isNotPregnantByGroup) ? null : rawCalvingDays
 
+  // Fallback: estima parto a partir da última IA/monta confirmada quando não há snap vet
+  // com data de parto. Suprimido se já pariu ou se DG falhou depois da monta.
+  const { effectiveCalvingDays, calvingIsEstimated } = (() => {
+    if (calvingDays !== null) return { effectiveCalvingDays: calvingDays, calvingIsEstimated: false }
+
+    const repros = animal.reproductions  // ordenado por date DESC
+    const lastMating = repros.find(
+      (r) => (r.type === 'INSEMINATION' || r.type === 'NATURAL_MATING') && r.status === 'CONFIRMED',
+    )
+    if (!lastMating) return { effectiveCalvingDays: null, calvingIsEstimated: false }
+
+    const matingDate = new Date(lastMating.date)
+    const calvingAfter   = repros.some((r) => r.type === 'CALVING' && new Date(r.date) > matingDate)
+    const dgFailedAfter  = repros.some((r) => r.type === 'PREGNANCY_CHECK' && r.status === 'FAILED' && new Date(r.date) > matingDate)
+    if (calvingAfter || dgFailedAfter) return { effectiveCalvingDays: null, calvingIsEstimated: false }
+
+    const dgConfirmedAfter = repros.find(
+      (r) => r.type === 'PREGNANCY_CHECK' && r.status === 'CONFIRMED' && new Date(r.date) > matingDate,
+    )
+    const estimated = dgConfirmedAfter?.nextCheckDate
+      ? new Date(dgConfirmedAfter.nextCheckDate)
+      : new Date(matingDate.getTime() + 280 * 24 * 60 * 60 * 1000)
+
+    const days = Math.round((estimated.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+    return { effectiveCalvingDays: days, calvingIsEstimated: !dgConfirmedAfter }
+  })()
+
   const sexColor  = animal.sex === 'FEMALE' ? 'from-pink-500/20 to-purple-600/20' : 'from-sky-500/20 to-blue-600/20'
   const sexAccent = animal.sex === 'FEMALE' ? 'bg-pink-500' : 'bg-sky-500'
 
@@ -693,21 +720,21 @@ export default async function AnimalDetailPage({
             )}
 
             {/* Dias para parto — destaque */}
-            {calvingDays !== null && (
+            {effectiveCalvingDays !== null && (
               <div className={cn(
                 'flex items-center gap-2 rounded-lg px-3 py-2 text-sm',
-                calvingDays < 0
+                effectiveCalvingDays < 0
                   ? 'bg-red-500/10 text-red-600 dark:text-red-400'
-                  : calvingDays <= 15
+                  : effectiveCalvingDays <= 15
                   ? 'bg-violet-500/10 text-violet-600 dark:text-violet-400'
                   : 'bg-muted text-muted-foreground',
               )}>
                 <Clock className="size-4 shrink-0" />
-                {calvingDays < 0
-                  ? `Parto vencido há ${Math.abs(calvingDays)} dia${Math.abs(calvingDays) !== 1 ? 's' : ''}`
-                  : calvingDays === 0
+                {effectiveCalvingDays < 0
+                  ? `Parto vencido há ${Math.abs(effectiveCalvingDays)} dia${Math.abs(effectiveCalvingDays) !== 1 ? 's' : ''}`
+                  : effectiveCalvingDays === 0
                   ? 'Parto previsto para hoje'
-                  : `${calvingDays} dia${calvingDays !== 1 ? 's' : ''} para o parto`}
+                  : `${effectiveCalvingDays} dia${effectiveCalvingDays !== 1 ? 's' : ''} para o parto${calvingIsEstimated ? ' (estimado)' : ''}`}
               </div>
             )}
 
