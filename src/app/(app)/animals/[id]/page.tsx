@@ -44,7 +44,7 @@ import {
 import {
   Scale, Heart, Wheat, ClipboardList, Tag, Stethoscope,
   Baby, ChevronLeft, Droplets, CheckCircle2, AlertTriangle,
-  Clock,
+  Clock, Dna,
 } from 'lucide-react'
 
 // ─── Metadata dinâmica ─────────────────────────────────────
@@ -866,6 +866,23 @@ export default async function AnimalDetailPage({
             ))}
           </InfoRows>
         </SectionCard>
+      )}
+
+      {/* ── ACASALAMENTO GENÉTICO (fêmeas elegíveis) ─── */}
+      {animal.sex === 'FEMALE' && ['COW', 'HEIFER'].includes(animal.category) && (
+        <Link
+          href={`/genetics/match/${animal.id}`}
+          className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 hover:bg-muted/30 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <Dna className="size-5 text-violet-500 shrink-0" />
+            <div>
+              <div className="text-sm font-medium">Acasalamento genético</div>
+              <div className="text-xs text-muted-foreground">Ver touros rankeados para este animal</div>
+            </div>
+          </div>
+          <span className="text-xs text-muted-foreground">→</span>
+        </Link>
       )}
 
       {/* ── SAÚDE ────────────────────────────────────── */}

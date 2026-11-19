@@ -24,6 +24,7 @@ import {
   Stethoscope,
   ListChecks,
   FileText,
+  Dna,
 } from 'lucide-react'
 import { cn }             from '@/lib/utils'
 import { SignOutButton }  from '@/components/shared/sign-out-button'
@@ -38,6 +39,7 @@ const NAV_ITEMS = [
   { href: '/feed',           icon: Wheat,           label: 'Ração'      },
   { href: '/health-events',  icon: Activity,        label: 'Saúde'      },
   { href: '/reproduction',   icon: Heart,           label: 'Reprodução' },
+  { href: '/genetics',      icon: Dna,             label: 'Genética'   },
   { href: '/lots',           icon: Layers2,         label: 'Lotes'      },
   { href: '/pastures',       icon: MapPin,          label: 'Pastos'     },
   { href: '/feed-types',     icon: Wheat,           label: 'Rações'     },

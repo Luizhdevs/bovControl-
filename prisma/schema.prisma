@@ -98,6 +98,8 @@ model Farm {
   veterinarySnapshots VeterinaryAnimalSnapshot[]
   teProtocols         TEProtocol[]
   iatfProtocols       IATFProtocol[]
+  geneticProfiles     GeneticProfile[]
+  breedingGoal        FarmBreedingGoal?
 
   @@map("farms")
 }
@@ -954,6 +956,69 @@ enum VeterinaryDayMeaning {
   DAYS_SINCE_INSEMINATION // dias desde a inseminação
   DAYS_OPEN // dias em anestro / vazia
   UNKNOWN
+}
+
+// ─── GENÉTICA / MELHORAMENTO GENÉTICO ─────────────────────
+// Catálogo de touros (sêmen externo) com DEPs para ranking de acasalamento.
+// FarmBreedingGoal define os pesos por característica para a pontuação.
+
+model GeneticProfile {
+  id           String  @id @default(cuid())
+  farmId       String
+
+  bullName     String
+  externalCode String?  // RGD, HB, HOBRAS, etc.
+  race         String?
+  labName      String?  // Central de sêmen / laboratório
+
+  // DEPs — Diferenças Esperadas na Progênie (todos opcionais)
+  // Produção
+  depLeite     Float?   // kg/lactação — MAIOR = melhor
+  depGordura   Float?   // kg — MAIOR = melhor
+  depProteina  Float?   // kg — MAIOR = melhor
+  // Crescimento
+  depDesmame   Float?   // kg — MAIOR = melhor
+  depSobreano  Float?   // kg — MAIOR = melhor
+  // Facilidade / saúde
+  depParto     Float?   // % — MENOR = melhor (menos intervenção)
+  depCcs       Float?   // ×1000 — MENOR = melhor
+  depTemperamento Float? // 1–10 — MENOR = mais calmo
+  depConformacao  Float? // — MAIOR = melhor
+  depFertilidade  Float? // % — MAIOR = melhor
+
+  // Acurácia (confiabilidade) das DEPs principais (0–1)
+  accLeite   Float?
+  accDesmame Float?
+
+  active  Boolean  @default(true)
+  notes   String?  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  farm Farm @relation(fields: [farmId], references: [id])
+
+  @@index([farmId, active])
+  @@map("genetic_profiles")
+}
+
+model FarmBreedingGoal {
+  id     String @id @default(cuid())
+  farmId String @unique
+
+  // Pesos por grupo de característica (0–100 cada)
+  wLeite       Int @default(30)  // produção de leite
+  wGanho       Int @default(25)  // crescimento (desmame + sobreano)
+  wParto       Int @default(20)  // facilidade de parto
+  wCcs         Int @default(15)  // saúde do úbere (CCS)
+  wConformacao Int @default(10)  // conformação / frame
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  farm Farm @relation(fields: [farmId], references: [id])
+
+  @@map("farm_breeding_goals")
 }
 
 enum TEProtocolStatus {
