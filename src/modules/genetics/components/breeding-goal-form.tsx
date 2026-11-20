@@ -2,7 +2,7 @@
 
 import { useTransition, useState } from 'react'
 import { Button }   from '@/components/ui/button'
-import { useToast } from '@/components/ui/use-toast'
+import { useToast } from '@/hooks/use-toast'
 import { saveBreedingGoal } from '../actions'
 import type { GoalWeights } from '../types'
 
