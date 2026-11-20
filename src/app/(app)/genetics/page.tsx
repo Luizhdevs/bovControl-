@@ -44,7 +44,7 @@ async function GeneticsContent({ farmId }: { farmId: string }) {
         title="Catálogo de Sêmen / Touros"
         subtitle={`${stats.count} touro${stats.count !== 1 ? 's' : ''} cadastrado${stats.count !== 1 ? 's' : ''}`}
         noPadding
-        actions={<AddBullButton farmId={farmId} />}
+        action={<AddBullButton farmId={farmId} />}
       >
         {bulls.length === 0 ? (
           <div className="p-4">
