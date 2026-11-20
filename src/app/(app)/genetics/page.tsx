@@ -3,7 +3,7 @@ import { redirect }     from 'next/navigation'
 import Link             from 'next/link'
 import { auth }         from '@/lib/auth'
 import { getActiveFarm } from '@/lib/active-farm'
-import { Dna, Target, Shuffle } from 'lucide-react'
+import { Dna, Shuffle } from 'lucide-react'
 import { PageHeader }   from '@/components/shared/page-header'
 import { SectionCard }  from '@/components/shared/section-card'
 import { EmptyState }   from '@/components/shared/empty-state'
@@ -97,7 +97,6 @@ async function GeneticsContent({ farmId }: { farmId: string }) {
       <SectionCard
         title="Metas de Melhoramento"
         subtitle="Pesos usados no score de acasalamento"
-        icon={<Target className="size-4 text-primary" />}
       >
         <BreedingGoalForm farmId={farmId} initial={goals} />
       </SectionCard>
